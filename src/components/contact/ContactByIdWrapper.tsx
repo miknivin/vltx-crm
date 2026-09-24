@@ -7,6 +7,7 @@ import { useGetContactByIdQuery } from '@/app/redux/api/contactApi';
 import { RootState } from '@/app/redux/rootReducer';
 import ReadOnlyContactDisplay from '../form/contact-form/ReadOnlyContactDisplay';
 import ShortSpinnerPrimary from '../ui/loaders/ShortSpinnerPrimary';
+import CustomerEnquiriesPanel from './CustomerEnquiriesPanel';
 
 interface ContactByIdWrapperProps {
   contactId: string;
@@ -24,20 +25,26 @@ export default function ContactByIdWrapper({ contactId }: ContactByIdWrapperProp
   const contact = data.data;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-7 p-6">
-      <div>
-        {/* Conditionally render UpdateContactForm based on user role */}
-        {userRole === 'admin' ? (
-          <UpdateContactForm contact={contact} />
-        ) : (
-          <ReadOnlyContactDisplay contact={contact}/>
-        )}
-      </div>
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Activity Timeline
-        </h2>
-        <Timeline contactId={contactId} />
+    <div className="p-6">
+      <CustomerEnquiriesPanel
+        customerName={contact.name}
+        enquiries={data.customerEnquiries ?? []}
+      />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-7">
+        <div>
+          {/* Conditionally render UpdateContactForm based on user role */}
+          {userRole === 'admin' ? (
+            <UpdateContactForm contact={contact} />
+          ) : (
+            <ReadOnlyContactDisplay contact={contact}/>
+          )}
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Activity Timeline
+          </h2>
+          <Timeline contactId={contactId} />
+        </div>
       </div>
     </div>
   );

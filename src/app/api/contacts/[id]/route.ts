@@ -4,6 +4,7 @@ import prisma from "@/app/lib/db/prisma";
 import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
 import { ENQUIRY_INCLUDE, serializeEnquiry } from "@/app/lib/enquiry/serialize";
 import {
+  ASSET_CATEGORY_LABELS,
   parseCertificateLab,
   parseCondition,
   parseJewelleryType,
@@ -86,6 +87,26 @@ export async function GET(
       orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
     });
 
+    // A seller can submit more than one asset — surface their other
+    // enquiries so a team member working this one can see the customer's
+    // full history rather than a single, seemingly isolated submission.
+    const otherEnquiries = await prisma.enquiry.findMany({
+      where: { customerId: enquiry.customerId, id: { not: id } },
+      select: {
+        id: true,
+        reference: true,
+        category: true,
+        brand: true,
+        estimatedValue: true,
+        createdAt: true,
+        pipelineEntries: {
+          take: 1,
+          select: { stage: { select: { name: true } } },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
     // The activity timeline is served separately and paginated by
     // GET /api/contacts/[id]/activities — it is unbounded, so it does not
     // belong in the detail payload.
@@ -114,6 +135,15 @@ export async function GET(
           name: a.user.name,
           email: a.user.email,
         })),
+      })),
+      customerEnquiries: otherEnquiries.map((other) => ({
+        _id: other.id,
+        reference: other.reference,
+        categoryLabel: ASSET_CATEGORY_LABELS[other.category],
+        brand: other.brand,
+        estimatedValue: other.estimatedValue !== null ? Number(other.estimatedValue) : null,
+        stageName: other.pipelineEntries[0]?.stage.name ?? null,
+        createdAt: other.createdAt,
       })),
     });
   } catch (error: unknown) {

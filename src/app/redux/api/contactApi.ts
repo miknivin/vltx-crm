@@ -168,12 +168,25 @@ interface UpdateContactApiResponse {
   data: ResponseContact;
 }
 
+export interface CustomerEnquirySummary {
+  _id: string;
+  reference: number;
+  categoryLabel: string;
+  brand: string | null;
+  estimatedValue: number | null;
+  stageName: string | null;
+  createdAt: string;
+}
+
 interface GetContactByIdResponse {
   success: boolean;
   data: ResponseContact;
   contact: ResponseContact;
   tasks: TaskItem[];
   activityLogs: ActivityLogItem[];
+  /// This customer's other enquiries (same person, a different asset) —
+  /// empty when this is their only submission so far.
+  customerEnquiries: CustomerEnquirySummary[];
 }
 
 interface AssignContactsRequest {

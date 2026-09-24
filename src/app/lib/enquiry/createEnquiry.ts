@@ -107,9 +107,11 @@ async function resolveDefaultPlacement(tx: Tx, input: EnquiryInput) {
   return { pipeline, stage };
 }
 
-/// Creates one enquiry, reusing the customer row when the mobile is already
-/// known. Every submission is a new enquiry even for a returning seller —
-/// a second asset is a second thing to value, not an edit of the first.
+/// Creates one enquiry, reusing the customer row when the seller is already
+/// known by **either** mobile or email. Every submission is a new enquiry
+/// even for a returning seller — a second asset is a second thing to value,
+/// not an edit of the first — but it's the same customer, so it lands in
+/// their existing history instead of forking a duplicate person.
 export async function createEnquiry(input: EnquiryInput, actorId: string | null) {
   const category = parseAssetCategory(input.category);
   if (!category) {
@@ -124,29 +126,53 @@ export async function createEnquiry(input: EnquiryInput, actorId: string | null)
     throw new EnquiryInputError("Name is required");
   }
 
+  const email = optionalText(input.email);
+
   return prisma.$transaction(async (tx) => {
     const { pipeline, stage } = await resolveDefaultPlacement(tx, input);
 
-    const customer = await tx.customer.upsert({
-      where: { mobile },
-      update: {
-        name: input.name.trim(),
-        // Only fill blanks on a repeat submission; a returning seller should
-        // not lose a corrected email because they left the field empty.
-        ...(optionalText(input.email) && { email: optionalText(input.email) }),
-        ...(optionalText(input.city) && { city: optionalText(input.city) }),
-        ...(parsePreferredContact(input.preferredContact) && {
-          preferredContact: parsePreferredContact(input.preferredContact),
-        }),
-      },
-      create: {
-        name: input.name.trim(),
-        mobile,
-        email: optionalText(input.email),
-        city: optionalText(input.city),
-        preferredContact: parsePreferredContact(input.preferredContact),
-      },
-    });
+    // Mobile is the unique column, so it's checked first and wins if a
+    // lookup by email would otherwise resolve to a *different* row — e.g. two
+    // household members sharing a family email but each with their own
+    // number. Only when no customer owns this mobile yet do we fall back to
+    // an email match, which is what lets "same email, new number" (a seller
+    // who switched phones) land on their existing record instead of forking
+    // a duplicate.
+    const existing =
+      (await tx.customer.findUnique({ where: { mobile } })) ??
+      (email
+        ? await tx.customer.findFirst({ where: { email }, orderBy: { createdAt: "desc" } })
+        : null);
+
+    const customer = existing
+      ? await tx.customer.update({
+          where: { id: existing.id },
+          data: {
+            name: input.name.trim(),
+            // Only ever different from what's already stored when the match
+            // came from the email fallback above — safe to write because
+            // that branch only runs when no other customer already owns
+            // this mobile.
+            mobile,
+            // Only fill blanks on a repeat submission; a returning seller
+            // should not lose a corrected email because they left the field
+            // empty this time.
+            ...(email && { email }),
+            ...(optionalText(input.city) && { city: optionalText(input.city) }),
+            ...(parsePreferredContact(input.preferredContact) && {
+              preferredContact: parsePreferredContact(input.preferredContact),
+            }),
+          },
+        })
+      : await tx.customer.create({
+          data: {
+            name: input.name.trim(),
+            mobile,
+            email,
+            city: optionalText(input.city),
+            preferredContact: parsePreferredContact(input.preferredContact),
+          },
+        });
 
     const source = input.sourceTitle
       ? await tx.source.upsert({
