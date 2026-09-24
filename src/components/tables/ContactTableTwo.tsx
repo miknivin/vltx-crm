@@ -22,7 +22,7 @@ const ContactTableTwo: React.FC = () => {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
       <div className="mb-4 px-5 py-3 flex justify-between item-center">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90 text-start">New Contacts</h3>
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90 text-start">Recent Enquiries</h3>
         <Link
           href="/pipelines/682da76cb5aab2e983c88634"
           className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200"
@@ -119,7 +119,7 @@ const ContactTableTwo: React.FC = () => {
                   <td className="px-5 py-4">
                     <div className="flex flex-wrap">
                       <Link
-                        href={`contacts/${contact._id}`}
+                        href={`/enquiries/${contact._id}`}
                         className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-2.5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800"
                       >
                         <EditIcon />

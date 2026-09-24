@@ -176,7 +176,7 @@ function SortableContactComponent({ contact, data, onOpenQR }: SortableContactPr
             <AppTooltip content="Open contact">
               <Link
                 href={{
-                  pathname: `/contacts/${contact._id || "684fbbf3a1b0e8eda0c7cfa4"}`,
+                  pathname: `/enquiries/${contact._id || "684fbbf3a1b0e8eda0c7cfa4"}`,
                   query: newQuery,
                 }}
                 className="inline-flex items-center px-1.5 py-1 text-sm font-medium text-gray-900 bg-transparent border border-gray-900 rounded-e-lg hover:bg-gray-200 hover:text-white focus:z-10 focus:ring-2 focus:ring-gray-500 focus:bg-gray-900 focus:text-white dark:border-white dark:text-white dark:hover:text-white dark:hover:bg-gray-700 dark:focus:bg-gray-700"

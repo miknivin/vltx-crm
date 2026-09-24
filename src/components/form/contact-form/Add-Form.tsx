@@ -94,16 +94,16 @@ export default function AddContactForm({ onClose }: AddContactFormProps) {
       });
       setTagInput("");
       onClose();
-      toast.success("Contact added successfully");
+      toast.success("Enquiry added successfully");
     } catch (err: any) {
-      setError(err.data?.error || "Failed to create contact");
+      setError(err.data?.error || "Failed to create enquiry");
     }
   };
 
   return (
     <>
       <h2 className="mb-2 font-semibold text-gray-800 modal-title text-theme-xl dark:text-white/90 lg:text-2xl">
-        Add New Contact
+        Add New Enquiry
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-4">

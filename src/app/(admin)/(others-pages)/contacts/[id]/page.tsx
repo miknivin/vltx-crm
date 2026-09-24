@@ -1,21 +1,21 @@
 import { Metadata } from "next";
 import React from "react";
-import ContactByIdHeader from "@/components/page-components/ContactByIdHeader";
-import ContactByIdWrapper from "@/components/contact/ContactByIdWrapper";
+import CustomerByIdHeader from "@/components/page-components/CustomerByIdHeader";
+import CustomerDetailWrapper from "@/components/customer/CustomerDetailWrapper";
 import { getAppMetaTitle } from "@/app/lib/utils/metadata";
 
 export const metadata: Metadata = {
-  title: getAppMetaTitle("Enquiry Details | VLTX CRM"),
+  title: getAppMetaTitle("Contact Details | VLTX CRM"),
   description: "",
 };
 
-export default async function Contacts({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params; // Extract id from params
+export default async function ContactDetails({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
   return (
     <div>
-      <ContactByIdHeader contactId={id} />
-      <ContactByIdWrapper contactId={id} />
+      <CustomerByIdHeader customerId={id} />
+      <CustomerDetailWrapper customerId={id} />
     </div>
   );
 }

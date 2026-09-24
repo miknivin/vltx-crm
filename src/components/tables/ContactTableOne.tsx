@@ -165,7 +165,7 @@ const ContactTableOne: React.FC = () => {
       setModalType("addToPipeline");
       openModal();
     } else {
-      toast.error("Please select at least one contact");
+      toast.error("Please select at least one enquiry");
     }
   };
 
@@ -174,7 +174,7 @@ const ContactTableOne: React.FC = () => {
       setModalType("assignContacts");
       openModal();
     } else {
-      toast.error("Please select at least one contact");
+      toast.error("Please select at least one enquiry");
     }
   };
 
@@ -212,7 +212,7 @@ const ContactTableOne: React.FC = () => {
       <div className="mb-2 px-5 py-3 flex gap-3 justify-between">
         <input
           type="text"
-          placeholder="Search contacts..."
+          placeholder="Search enquiries..."
           value={params.keyword}
           onChange={handleSearch}
           className="w-full max-w-xl rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
@@ -258,7 +258,7 @@ const ContactTableOne: React.FC = () => {
       <div className="relative overflow-x-auto max-h-[calc(110vh-200px)]">
         {selectedContacts && selectedContacts.length > 0 && (
           <h3 className="text-sm mb-1 px-5 font-semibold text-gray-800 dark:text-white/90 text-start">
-            {selectedContacts.length} contacts selected
+            {selectedContacts.length} enquiries selected
           </h3>
         )}
         <table className="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
@@ -327,7 +327,7 @@ const ContactTableOne: React.FC = () => {
             {!isLoading && !error && data?.contacts?.length === 0 && (
               <tr className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
                 <td colSpan={columnCount} className="px-5 py-4 text-center">
-                  No contacts found
+                  No enquiries found
                 </td>
               </tr>
             )}
@@ -424,9 +424,9 @@ const ContactTableOne: React.FC = () => {
                       <div className="flex flex-wrap">
                         {isAdmin && (
                           <Link
-                            href={`contacts/${contact._id}`}
+                            href={`/enquiries/${contact._id}`}
                             className="text-white flex justify-center items-center bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-2.5 py-2.5 me-2 mb-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800"
-                            title="Edit Contact"
+                            title="Edit Enquiry"
                           >
                             <EditIcon />
                           </Link>
@@ -443,7 +443,7 @@ const ContactTableOne: React.FC = () => {
         <div className="px-5 py-3 text-gray-800 dark:text-white/90 flex justify-between items-center">
           <div className="text-sm">
             Page {data.pagination.page} of {data.pagination.totalPages} (
-            {data.pagination.total} contacts)
+            {data.pagination.total} enquiries)
           </div>
           <BasicPagination
             currentPage={params.page}

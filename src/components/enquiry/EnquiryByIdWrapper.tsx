@@ -7,20 +7,20 @@ import { useGetContactByIdQuery } from '@/app/redux/api/contactApi';
 import { RootState } from '@/app/redux/rootReducer';
 import ReadOnlyContactDisplay from '../form/contact-form/ReadOnlyContactDisplay';
 import ShortSpinnerPrimary from '../ui/loaders/ShortSpinnerPrimary';
-import CustomerEnquiriesPanel from './CustomerEnquiriesPanel';
+import CustomerEnquiriesPanel from '../contact/CustomerEnquiriesPanel';
 
-interface ContactByIdWrapperProps {
-  contactId: string;
+interface EnquiryByIdWrapperProps {
+  enquiryId: string;
 }
 
-export default function ContactByIdWrapper({ contactId }: ContactByIdWrapperProps) {
-  const { data, error, isLoading } = useGetContactByIdQuery(contactId);
-  
+export default function EnquiryByIdWrapper({ enquiryId }: EnquiryByIdWrapperProps) {
+  const { data, error, isLoading } = useGetContactByIdQuery(enquiryId);
+
   // Access user role from Redux store
   const userRole = useSelector((state: RootState) => state.user.user?.role);
 
   if (isLoading) return <div className='flex justify-center'><ShortSpinnerPrimary/></div>;
-  if (error || !data?.success) return <div>Error loading contact</div>;
+  if (error || !data?.success) return <div>Error loading enquiry</div>;
 
   const contact = data.data;
 
@@ -43,7 +43,7 @@ export default function ContactByIdWrapper({ contactId }: ContactByIdWrapperProp
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Activity Timeline
           </h2>
-          <Timeline contactId={contactId} />
+          <Timeline contactId={enquiryId} />
         </div>
       </div>
     </div>

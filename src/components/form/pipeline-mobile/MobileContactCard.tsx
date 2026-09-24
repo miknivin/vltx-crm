@@ -278,7 +278,7 @@ let longPressTimeout:any;
             </button>
             <Link
               href={{
-                pathname: `/contacts/${contact._id || "684fbbf3a1b0e8eda0c7cfa4"}`,
+                pathname: `/enquiries/${contact._id || "684fbbf3a1b0e8eda0c7cfa4"}`,
                 query: newQuery,
               }}
               className="flex items-center px-3 py-1 text-sm font-medium text-gray-900 bg-transparent border border-gray-300 rounded-md hover:bg-gray-100 dark:border-gray-600 dark:text-white dark:hover:bg-gray-700"

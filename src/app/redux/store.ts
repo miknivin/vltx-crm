@@ -3,6 +3,7 @@ import rootReducer from "./rootReducer";
 import { authApi } from "./api/authApi";
 import { userApi } from "./api/userApi"
 import { contactApi } from "./api/contactApi";
+import { customerApi } from "./api/customerApi";
 import { pipelineApi } from "./api/pipelineApi";
 import { dashboardApi } from "./api/dashboardApi";
 import { aiReportApi } from "./api/aiReportApi";
@@ -16,6 +17,7 @@ const store = configureStore({
       userApi.middleware,
       authApi.middleware,
       contactApi.middleware,
+      customerApi.middleware,
       pipelineApi.middleware,
       dashboardApi.middleware,
       aiReportApi.middleware,

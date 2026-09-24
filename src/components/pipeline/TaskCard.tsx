@@ -335,7 +335,7 @@ function TaskCardComponent({ task, isUpdating, isDeleting, onEdit, onDelete, onS
           <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
             <UserIcon />
             <span>Linked to</span>
-            <Link href={`/contacts/${linkedContact.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
+            <Link href={`/enquiries/${linkedContact.id}`} className="font-medium text-brand-600 hover:underline dark:text-brand-400">
               {linkedContact.name}
             </Link>
           </div>

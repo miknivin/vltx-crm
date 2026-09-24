@@ -8,6 +8,7 @@ import {
   BoxCubeIcon,
   ChevronDownIcon,
   GridIcon,
+  ListIcon,
   PieChartIcon,
   PlugInIcon,
   TableIcon,
@@ -35,8 +36,13 @@ const getNavItems = (isMobile: boolean): NavItem[] => [
   },
   {
     icon: <UserCircleIcon />,
-    name: "Enquiries",
+    name: "Contacts",
     path: "/contacts",
+  },
+  {
+    icon: <ListIcon />,
+    name: "Enquiries",
+    path: "/enquiries",
   },
   {
     name: "Pipelines",
