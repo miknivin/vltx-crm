@@ -39,6 +39,7 @@
     "cloudflared": "^0.7.0",
     "date-fns": "^4.1.0",
     "flatpickr": "^4.6.13",
+    "hashids": "^2.3.0",
     "html2canvas-pro": "^2.4.5",
     "idb-keyval": "^6.2.2",
     "jsonwebtoken": "^9.0.2",

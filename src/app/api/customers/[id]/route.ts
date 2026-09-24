@@ -3,6 +3,7 @@ import prisma from "@/app/lib/db/prisma";
 import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
 import { ASSET_CATEGORY_LABELS, PREFERRED_CONTACT_LABELS, parsePreferredContact } from "@/app/lib/enquiry/constants";
 import { normalizeMobile } from "@/app/lib/enquiry/createEnquiry";
+import { encodeReference } from "@/app/lib/enquiry/referenceCode";
 
 interface UpdateCustomerRequest {
   name?: string;
@@ -83,7 +84,7 @@ export async function GET(
       },
       enquiries: enquiries.map((enquiry) => ({
         _id: enquiry.id,
-        reference: enquiry.reference,
+        reference: encodeReference(enquiry.reference),
         categoryLabel: ASSET_CATEGORY_LABELS[enquiry.category],
         brand: enquiry.brand,
         estimatedValue: enquiry.estimatedValue !== null ? Number(enquiry.estimatedValue) : null,
@@ -94,7 +95,10 @@ export async function GET(
         ...task,
         _id: task.id,
         contactId: task.enquiryId
-          ? { _id: task.enquiryId, name: task.enquiry ? `Enquiry #${task.enquiry.reference}` : undefined }
+          ? {
+              _id: task.enquiryId,
+              name: task.enquiry ? `Enquiry #${encodeReference(task.enquiry.reference)}` : undefined,
+            }
           : null,
         assignedTo: task.assignedTo.map((a) => ({
           _id: a.user.id,

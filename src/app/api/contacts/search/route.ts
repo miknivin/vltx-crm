@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "@/app/lib/db/prisma";
 import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
 import { ASSET_CATEGORY_LABELS } from "@/app/lib/enquiry/constants";
+import { encodeReference } from "@/app/lib/enquiry/referenceCode";
 
 export async function GET(req: NextRequest) {
   try {
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
       {
         contacts: enquiries.map((enquiry) => ({
           _id: enquiry.id,
-          reference: enquiry.reference,
+          reference: encodeReference(enquiry.reference),
           name: enquiry.customer.name,
           email: enquiry.customer.email,
           phone: enquiry.customer.mobile,

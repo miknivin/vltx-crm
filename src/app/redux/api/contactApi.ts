@@ -180,7 +180,8 @@ interface UpdateContactApiResponse {
 
 export interface CustomerEnquirySummary {
   _id: string;
-  reference: number;
+  /// The obfuscated, staff-facing code (e.g. "9G2XQ7VK") — see referenceCode.ts.
+  reference: string;
   categoryLabel: string;
   brand: string | null;
   estimatedValue: number | null;

@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { decodeReference } from "@/app/lib/enquiry/referenceCode";
 
 type Where = Prisma.EnquiryWhereInput;
 type Scalar = string | number | boolean | Date | null;
@@ -6,7 +7,13 @@ type Scalar = string | number | boolean | Date | null;
 /// How a filterable field maps onto `Prisma.EnquiryWhereInput`. Scalar fields
 /// sit on the enquiry itself; the rest reach through a relation, so each one
 /// declares how to wrap a leaf condition.
-type FieldKind = "string" | "number" | "boolean" | "date" | "enum";
+///
+/// `referenceCode` is `reference`'s own kind: the column is still the
+/// sequence-backed integer, but anyone filtering by it — the AI planner
+/// included — only ever has the obfuscated code a person can see, so a
+/// string value here is decoded back to that integer before it reaches the
+/// database.
+type FieldKind = "string" | "number" | "boolean" | "date" | "enum" | "referenceCode";
 
 interface FieldSpec {
   kind: FieldKind;
@@ -29,7 +36,7 @@ function viaCustomer(column: string, kind: FieldKind): [string, FieldSpec] {
 /// Anything not listed here is rejected before a query is built, so a
 /// mis-planned field name can never reach the database.
 export const ENQUIRY_FIELD_SPECS: Record<string, FieldSpec> = Object.fromEntries([
-  own("reference", "number"),
+  own("reference", "referenceCode"),
   own("category", "enum"),
   own("jewelleryType", "enum"),
   own("brand", "string"),
@@ -116,6 +123,10 @@ function coerce(spec: FieldSpec, value: Scalar): unknown {
   switch (spec.kind) {
     case "number":
       return typeof value === "number" ? value : Number(value);
+    case "referenceCode":
+      // -1 never matches a real row — an unrecognised code should return no
+      // results, not accidentally coerce to 0/NaN and match unpredictably.
+      return typeof value === "number" ? value : (decodeReference(String(value)) ?? -1);
     case "boolean":
       return typeof value === "boolean" ? value : String(value).toLowerCase() === "true";
     case "date":

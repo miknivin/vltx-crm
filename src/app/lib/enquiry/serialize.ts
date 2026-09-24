@@ -7,6 +7,7 @@ import {
   PREFERRED_CONTACT_LABELS,
   SHAPE_CUT_LABELS,
 } from "./constants";
+import { encodeReference } from "./referenceCode";
 
 /// Everything the list, board and detail views read. Keeping `assignedTo`,
 /// `tags` and `pipelinesActive` in their original shapes means the kanban
@@ -42,7 +43,10 @@ export function serializeEnquiry(enquiry: EnquiryWithRelations) {
 
   return {
     _id: enquiry.id,
-    reference: enquiry.reference,
+    // A random-looking, obfuscated encoding of the sequence-backed column —
+    // see referenceCode.ts. `reference` is what every caller reads; nothing
+    // outside this module needs the raw integer.
+    reference: encodeReference(enquiry.reference),
 
     // Contact details, flattened from the customer row. The list and board
     // components read `name`/`email`/`phone` off the record directly.

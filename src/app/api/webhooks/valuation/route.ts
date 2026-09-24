@@ -87,11 +87,13 @@ export async function POST(req: NextRequest) {
       null
     );
 
+    const serialized = serializeEnquiry(enquiry);
+
     return NextResponse.json(
       {
         success: true,
-        reference: enquiry.reference,
-        enquiry: serializeEnquiry(enquiry),
+        reference: serialized.reference,
+        enquiry: serialized,
       },
       { status: 201 }
     );

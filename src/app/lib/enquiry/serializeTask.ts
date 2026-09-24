@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { ASSET_CATEGORY_LABELS } from "./constants";
+import { encodeReference } from "./referenceCode";
 
 export const TASK_INCLUDE = {
   enquiry: {
@@ -29,7 +30,7 @@ export function serializeTask(task: TaskWithRelations) {
     contactId: task.enquiry
       ? {
           _id: task.enquiry.id,
-          reference: task.enquiry.reference,
+          reference: encodeReference(task.enquiry.reference),
           name: `${task.enquiry.customer.name} · ${ASSET_CATEGORY_LABELS[task.enquiry.category]}`,
         }
       : null,

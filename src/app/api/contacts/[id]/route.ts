@@ -13,6 +13,7 @@ import {
   parseYesNo,
 } from "@/app/lib/enquiry/constants";
 import { normalizeMobile } from "@/app/lib/enquiry/createEnquiry";
+import { encodeReference } from "@/app/lib/enquiry/referenceCode";
 
 interface UpdateEnquiryRequest {
   // Person
@@ -138,7 +139,7 @@ export async function GET(
       })),
       customerEnquiries: otherEnquiries.map((other) => ({
         _id: other.id,
-        reference: other.reference,
+        reference: encodeReference(other.reference),
         categoryLabel: ASSET_CATEGORY_LABELS[other.category],
         brand: other.brand,
         estimatedValue: other.estimatedValue !== null ? Number(other.estimatedValue) : null,
