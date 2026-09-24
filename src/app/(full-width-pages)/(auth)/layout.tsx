@@ -51,7 +51,7 @@ export default function AuthLayout({
                 <Link href="/" className="block mb-4">
                   <Image
                     width={231}
-                    height={48}
+                    height={70}
                     src={LOGO_SRC}
                     alt="Logo"
                   />

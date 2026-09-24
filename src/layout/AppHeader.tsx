@@ -3,7 +3,7 @@ import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 // import NotificationDropdown from "@/components/header/NotificationDropdown";
 import UserDropdown from "@/components/header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
-import { LOGO_SRC } from "@/app/lib/utils/logo";
+import { LOGO_SRC, LOGO_LIGHT_SRC } from "@/app/lib/utils/logo";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useState ,useEffect,useRef} from "react";
@@ -85,7 +85,8 @@ const AppHeader: React.FC = () => {
           </button>
 
           <Link href="/" className="lg:hidden">
-            <Image width={154} height={32} src={LOGO_SRC} alt="Logo" />
+            <Image className="hidden dark:block" width={106} height={32} src={LOGO_SRC} alt="Logo" />
+            <Image className="block dark:hidden" width={106} height={32} src={LOGO_LIGHT_SRC} alt="Logo" />
           </Link>
 
           <button

@@ -16,7 +16,7 @@ import {
 import UsersIcon from "@/components/ui/flowbiteIcons/Users";
 import { useSelector } from "react-redux";
 import { RootState } from "@/app/redux/rootReducer";
-import { LOGO_SRC } from "@/app/lib/utils/logo";
+import { LOGO_SRC, LOGO_LIGHT_SRC, LOGO_ICON_SRC } from "@/app/lib/utils/logo";
 import TaskIcon from "@/components/ui/flowbiteIcons/TaskIcon";
 import SettingsIcon from "@/components/ui/flowbiteIcons/SettingsIcon";
 
@@ -340,9 +340,12 @@ const AppSidebar: React.FC = () => {
       >
         <Link href="/">
           {isExpanded || isHovered || isMobileOpen ? (
-            <Image src={LOGO_SRC} alt="Logo" width={150} height={40} />
+            <>
+              <Image className="hidden dark:block" src={LOGO_SRC} alt="Logo" width={150} height={45} />
+              <Image className="block dark:hidden" src={LOGO_LIGHT_SRC} alt="Logo" width={150} height={45} />
+            </>
           ) : (
-            <Image src={LOGO_SRC} alt="Logo" width={32} height={32} />
+            <Image src={LOGO_ICON_SRC} alt="Logo" width={32} height={32} />
           )}
         </Link>
       </div>
