@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useGetTeamMembersQuery } from "@/app/redux/api/userApi";
-import { IUser } from "@/app/models/User";
+import type { IUser } from "@/app/types/user";
 import Chip from "@/components/ui/chips/Chip";
 
 interface UserAssignmentFilterProps {

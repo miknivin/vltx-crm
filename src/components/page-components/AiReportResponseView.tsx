@@ -24,7 +24,10 @@ const headerFromKey = (key: string) =>
     .replace(/^./, (s) => s.toUpperCase())
     .trim();
 
-const OBJECT_ID_PATTERN = /\b[0-9a-fA-F]{24}\b/g;
+// Ids are UUIDs since the Postgres migration; the old 24-hex pattern
+// matched nothing, so a leaked id would have rendered as-is.
+const RAW_ID_PATTERN =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const USER_MENTION_PATTERN = /@users:([^\s]+)/g;
 
 const sanitizeDisplayText = (
@@ -39,7 +42,7 @@ const sanitizeDisplayText = (
   });
 
   return next
-    .replace(OBJECT_ID_PATTERN, "")
+    .replace(RAW_ID_PATTERN, "")
     .replace(/\s{2,}/g, " ")
     .replace(/\(\s*\)/g, "")
     .replace(/\[\s*\]/g, "")
@@ -62,7 +65,7 @@ const extractUserMentionMap = (
     const displayLabel = displayMentions[index]?.[1]?.trim();
 
     if (!id || !displayLabel) return;
-    if (!/^[0-9a-fA-F]{24}$/.test(id)) return;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return;
 
     replacements[id] = displayLabel;
   });

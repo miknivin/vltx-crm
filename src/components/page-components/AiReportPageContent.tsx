@@ -6,7 +6,7 @@ import { useDispatch, useSelector } from "react-redux";
 import UpArrowIcon from "../ui/flowbiteIcons/UpArrow";
 import { useGetTeamMembersQuery } from "@/app/redux/api/userApi";
 import { useGetPipelineByIdQuery } from "@/app/redux/api/pipelineApi";
-import { activityOptions } from "@/components/form/contactFilter/elements/ActivityFilter";
+import { CATEGORY_OPTIONS } from "@/app/lib/enquiry/constants";
 import AiReportResponseView from "./AiReportResponseView";
 import VeryShortSpinnerPrimary from "@/components/ui/loaders/veryShortSpinnerPrimary";
 import { AiFilterQueryResponse } from "@/app/types/ai-report";
@@ -29,7 +29,7 @@ type ChatMessage = {
   content: React.ReactNode;
 };
 
-type MentionMenuType = "users" | "stages" | "activities";
+type MentionMenuType = "users" | "stages" | "categories";
 
 type SuggestionItem = {
   id: string;
@@ -55,7 +55,7 @@ const getInitialSessionId = () => {
 const MENTION_MENUS: Array<{ key: MentionMenuType; label: string }> = [
   { key: "users", label: "Users" },
   { key: "stages", label: "Stages" },
-  { key: "activities", label: "Activities" },
+  { key: "categories", label: "Categories" },
 ];
 
 const getCaretCoordinates = (
@@ -204,18 +204,19 @@ export default function AiReportPageContent() {
         }));
     }
 
-    return activityOptions
-      .filter(
-        (activity) =>
-          activity.label.toLowerCase().includes(typedFragment.trim().toLowerCase()) ||
-          activity.value.toLowerCase().includes(typedFragment.trim().toLowerCase())
-      )
-      .map((activity) => ({
-        id: activity.value,
-        label: activity.label,
-        value: activity.label,
-        menu: "activities" as const,
-      }));
+    // Asset categories replace the previous client's call-outcome list: they
+    // are what an enquiry is actually about, and what the AI filter groups by.
+    const fragment = typedFragment.trim().toLowerCase();
+    return CATEGORY_OPTIONS.filter(
+      (option) =>
+        option.label.toLowerCase().includes(fragment) ||
+        option.value.toLowerCase().includes(fragment)
+    ).map((option) => ({
+      id: option.value,
+      label: option.label,
+      value: option.label,
+      menu: "categories" as const,
+    }));
   }, [activeMenu, pipelineData?.pipeline?.stages, teamMembersData?.users, typedFragment]);
 
   const updateDropdownPosition = (value: string, nextCaretIndex: number) => {

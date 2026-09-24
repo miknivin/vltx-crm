@@ -5,13 +5,9 @@ import { authApi } from "./api/authApi";
 import { userSlice } from "./features/authSlice";
 import { contactApi } from "./api/contactApi";
 import { pipelineApi } from "./api/pipelineApi";
-import { calenderApi } from "./api/calenderApi";
 import { dashboardApi } from "./api/dashboardApi";
-import { serviceApi } from "./api/serviceApi";
-import { proposalApi } from "./api/proposalApi";
 import { aiReportApi } from "./api/aiReportApi";
 import { settingsApi } from "./api/settingsApi";
-import { invoiceApi } from "./api/invoiceApi";
 import { sourceApi } from "./api/sourceApi";
 
 const rootReducer = combineReducers({
@@ -20,13 +16,9 @@ const rootReducer = combineReducers({
   [authApi.reducerPath]: authApi.reducer,
   [contactApi.reducerPath]: contactApi.reducer,
   [pipelineApi.reducerPath]: pipelineApi.reducer,
-  [calenderApi.reducerPath]:calenderApi.reducer,
   [dashboardApi.reducerPath]:dashboardApi.reducer,
-  [serviceApi.reducerPath]: serviceApi.reducer,
-  [proposalApi.reducerPath]: proposalApi.reducer,
   [aiReportApi.reducerPath]: aiReportApi.reducer,
   [settingsApi.reducerPath]: settingsApi.reducer,
-  [invoiceApi.reducerPath]: invoiceApi.reducer,
   [sourceApi.reducerPath]: sourceApi.reducer
 });
 

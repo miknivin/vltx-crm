@@ -14,14 +14,12 @@ import ImageUploadField from "./ImageUploadField";
 
 const EMPTY_SETTINGS: ICompanySettings = {
   companyName: "",
+  legalName: "",
   address: "",
   email: "",
   phone: "",
   website: "",
   taxId: "",
-  bankDetails: { accountName: "", accountNumber: "", ifsc: "", bankName: "", upiId: "" },
-  invoicePrefix: "INV",
-  invoiceNotes: "",
 };
 
 export default function CompanySettingsForm() {
@@ -31,14 +29,11 @@ export default function CompanySettingsForm() {
   const [form, setForm] = useState<ICompanySettings>(EMPTY_SETTINGS);
 
   useEffect(() => {
-    if (data) setForm({ ...EMPTY_SETTINGS, ...data, bankDetails: { ...EMPTY_SETTINGS.bankDetails, ...data.bankDetails } });
+    if (data) setForm({ ...EMPTY_SETTINGS, ...data });
   }, [data]);
 
   const setField = <K extends keyof ICompanySettings>(key: K, value: ICompanySettings[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
-
-  const setBankField = (key: keyof NonNullable<ICompanySettings["bankDetails"]>, value: string) =>
-    setForm((prev) => ({ ...prev, bankDetails: { ...prev.bankDetails, [key]: value } }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,6 +75,15 @@ export default function CompanySettingsForm() {
           onChange={(e) => setField("companyName", e.target.value)}
           className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           required
+        />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">Registered legal name</label>
+        <input
+          value={form.legalName}
+          onChange={(e) => setField("legalName", e.target.value)}
+          className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
       </div>
 
@@ -129,76 +133,6 @@ export default function CompanySettingsForm() {
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </div>
-      </div>
-
-      <div>
-        <h4 className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">Bank / UPI details</h4>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">Account name</label>
-            <input
-              value={form.bankDetails?.accountName || ""}
-              onChange={(e) => setBankField("accountName", e.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">Account number</label>
-            <input
-              value={form.bankDetails?.accountNumber || ""}
-              onChange={(e) => setBankField("accountNumber", e.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">IFSC</label>
-            <input
-              value={form.bankDetails?.ifsc || ""}
-              onChange={(e) => setBankField("ifsc", e.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">Bank name</label>
-            <input
-              value={form.bankDetails?.bankName || ""}
-              onChange={(e) => setBankField("bankName", e.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">UPI ID</label>
-            <input
-              value={form.bankDetails?.upiId || ""}
-              onChange={(e) => setBankField("upiId", e.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">Invoice number prefix</label>
-          <input
-            value={form.invoicePrefix}
-            onChange={(e) => setField("invoicePrefix", e.target.value)}
-            placeholder="INV"
-            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-          Default invoice notes / terms
-        </label>
-        <textarea
-          value={form.invoiceNotes}
-          onChange={(e) => setField("invoiceNotes", e.target.value)}
-          rows={3}
-          className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-        />
       </div>
 
       <div className="flex justify-end">

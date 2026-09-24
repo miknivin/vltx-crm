@@ -1,20 +1,9 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-unused-expressions */
-import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/db/connection';
-import Pipeline from '@/app/models/Pipeline';
-import Stage from '@/app/models/Stage';
-import User from '@/app/models/User'; // Registers the "User" model — required by Pipeline's populate('user') below
-import { isAuthenticatedUser, authorizeRoles } from '../../middlewares/auth';
-import { z } from 'zod';
-import mongoose from 'mongoose';
-
-interface UpdateFields {
-  name?: string;
-  notes?: string | null;
-  updated_at: Date;
-}
-
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
+import prisma from "@/app/lib/db/prisma";
+import { isAuthenticatedUser, authorizeRoles } from "../../middlewares/auth";
+import { serializePipeline } from "@/app/lib/enquiry/serializePipeline";
 
 const updatePipelineSchema = z.object({
   name: z.string().trim().min(3).max(100).optional(),
@@ -22,9 +11,10 @@ const updatePipelineSchema = z.object({
   stages: z
     .array(
       z.object({
-        stage_id: z.string().optional(), // Optional for new stages
+        stage_id: z.string().optional(), // absent for a newly added stage
         name: z.string().trim().min(3).max(50),
         order: z.number().int().min(0),
+        probability: z.number().int().min(0).max(100).optional(),
         isSuccess: z.boolean().optional(),
       })
     )
@@ -32,165 +22,149 @@ const updatePipelineSchema = z.object({
 });
 
 const validatePipelineUpdate = (data: unknown) => {
-  try {
-    return { data: updatePipelineSchema.parse(data), error: null };
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return { data: null, error: error.errors };
-    }
-    return { data: null, error: 'Invalid request body' };
-  }
+  const parsed = updatePipelineSchema.safeParse(data);
+  return parsed.success
+    ? { data: parsed.data, error: null }
+    : { data: null, error: parsed.error.issues };
 };
 
-export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const session = await mongoose.startSession();
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    await dbConnect();
-    User
-    session.startTransaction();
-
     const user = await isAuthenticatedUser(request);
-    if (!user) {
-      return NextResponse.json({ error: 'Need to login' }, { status: 401 });
-    }
+    authorizeRoles(user, "admin");
 
-    authorizeRoles(user, 'admin');
-
-
-    const pipelineId =   (await context.params).id; 
-
-    
+    const pipelineId = (await context.params).id;
     if (!pipelineId) {
-      return NextResponse.json({ error: 'Pipeline ID is required' }, { status: 400 });
+      return NextResponse.json({ error: "Pipeline ID is required" }, { status: 400 });
     }
 
-    const body = await request.json();
-    const validationResult = validatePipelineUpdate(body);
+    const validationResult = validatePipelineUpdate(await request.json());
     if (validationResult.error) {
       return NextResponse.json({ error: validationResult.error }, { status: 400 });
     }
 
-    const { name = "", notes = "", stages = [] } = validationResult.data ?? {};
+    const { name, notes, stages } = validationResult.data ?? {};
 
-    const pipeline = await Pipeline.findById(pipelineId).session(session);
-    if (!pipeline) {
-      return NextResponse.json({ error: 'Pipeline not found' }, { status: 404 });
+    const existing = await prisma.pipeline.findUnique({
+      where: { id: pipelineId },
+      select: { id: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
     }
 
-    // Update pipeline fields
-    const updateFields: UpdateFields = {
-      updated_at: new Date(),
-    };
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.pipeline.update({
+        where: { id: pipelineId },
+        data: {
+          ...(name && { name: name.trim() }),
+          ...(notes !== undefined && { notes: notes ? notes.trim() : null }),
+        },
+      });
 
-    if (name) {
-      updateFields.name = name.trim();
-    }
+      if (stages?.length) {
+        // Renumber from 1 so the saved order matches the order the person
+        // dragged the stages into, with no gaps to collide on.
+        const normalized = [...stages]
+          .sort((a, b) => a.order - b.order)
+          .map((stage, index) => ({ ...stage, order: index + 1 }));
 
-    if (notes !== undefined) {
-      updateFields.notes = notes ? notes.trim() : null;
-    }
+        const keptIds = normalized
+          .map((stage) => stage.stage_id)
+          .filter((id): id is string => Boolean(id));
 
-    await Pipeline.findByIdAndUpdate(pipelineId, { $set: updateFields }, { new: true, runValidators: true, session });
+        // Stages dropped from the list go first: `(pipeline_id, order)` is
+        // unique, so a removed stage still holding an order would collide
+        // with whichever stage slides into its place.
+        await tx.stage.deleteMany({
+          where: { pipelineId, id: { notIn: keptIds } },
+        });
 
-    // Upsert stages if provided
-    let incomingStageIds: string[] = [];
-    if (stages && stages.length > 0) {
-      // Normalize stage orders to avoid conflicts (1-based indexing)
-      const normalizedStages = stages
-        .sort((a, b) => a.order - b.order)
-        .map((stage, index) => ({ ...stage, order: index + 1 }));
+        // Park the survivors on negative orders before writing the real
+        // ones, for the same reason: two stages swapping places would
+        // otherwise momentarily share an order.
+        for (const [index, stage] of normalized.entries()) {
+          if (!stage.stage_id) continue;
+          await tx.stage.update({
+            where: { id: stage.stage_id },
+            data: { order: -(index + 1) },
+          });
+        }
 
-      // Prepare bulk write operations for upsert
-      const bulkOps = normalizedStages.map(
-        (stage: { stage_id?: string; name: string; order: number; isSuccess?: boolean }, index: number) => {
-          const stageData = {
-            pipeline_id: pipelineId,
+        for (const stage of normalized) {
+          const data = {
             name: stage.name.trim(),
             order: stage.order,
             isSuccess: Boolean(stage.isSuccess),
-            updated_at: new Date(),
+            ...(stage.probability !== undefined && { probability: stage.probability }),
           };
 
           if (stage.stage_id) {
-            // Update existing stage by stage_id
-            return {
-              updateOne: {
-                filter: { 
-                  _id: new mongoose.Types.ObjectId(stage.stage_id), 
-                  pipeline_id: pipelineId 
-                },
-                update: { $set: stageData },
-                upsert: false, // Only update if exists
-              },
-            };
+            await tx.stage.update({ where: { id: stage.stage_id }, data });
           } else {
-            console.log('New stage:', stageData);
-            // Insert new stage
-            return {
-              insertOne: {
-                document: { ...stageData, created_at: new Date() },
-              },
-            };
+            await tx.stage.create({ data: { ...data, pipelineId } });
           }
         }
-      );
-
-      // Execute bulk write and wait for response
-      try {
-        const bulkResult = await Stage.bulkWrite(bulkOps, { session });
-
-
-        // Collect existing stage IDs from the payload
-        incomingStageIds = normalizedStages
-          .filter((stage: { stage_id?: string }) => stage.stage_id)
-          .map((stage: { stage_id?: string }) => stage.stage_id)
-          .filter((id): id is string => !!id);
-
-        // Add newly inserted stage IDs to incomingStageIds
-        Object.values(bulkResult.insertedIds).forEach((id) => {
-          if (id) {
-            incomingStageIds.push(id.toString());
-          }
-        });
-
-        console.log('Updated incomingStageIds:', incomingStageIds);
-
-        // Perform deleteMany after bulkWrite
-        if (incomingStageIds.length > 0) {
-          const deletedCount = await Stage.deleteMany(
-            {
-              pipeline_id: pipelineId,
-              _id: { $nin: incomingStageIds },
-            },
-            { session }
-          );
-          console.log('Deleted stages count:', deletedCount.deletedCount);
-        } else {
-          console.log('Skipping deleteMany: No stages to delete');
-        }
-      } catch (bulkError) {
-        console.error('Bulk write error:', bulkError);
-        throw new Error('Failed to update stages');
       }
-    }
 
-    // Fetch updated pipeline with stages
-    const finalPipeline = await Pipeline.findById(pipelineId).populate('user', 'name email').lean();
-    const pipelineStages = await Stage.find({ pipeline_id: pipelineId }).sort({ order: 1 }).lean();
+      return tx.pipeline.findUnique({
+        where: { id: pipelineId },
+        include: {
+          stages: true,
+          user: { select: { id: true, name: true, email: true } },
+        },
+      });
+    });
 
-    await session.commitTransaction();
-    return NextResponse.json({ pipeline: { ...finalPipeline, stages: pipelineStages } }, { status: 200 });
+    return NextResponse.json(
+      { pipeline: updated ? serializePipeline(updated) : null },
+      { status: 200 }
+    );
   } catch (error: unknown) {
-    await session.abortTransaction();
-    console.error('Error updating pipeline:', error);
-    if (error instanceof Error) {
-      if ('code' in error && error.code === 11000) {
-        return NextResponse.json({ error: 'Pipeline name or stage name already exists' }, { status: 400 });
-      }
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "Pipeline name already exists" }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Failed to update pipeline' }, { status: 500 });
-  } finally {
-    session.endSession();
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("login") || message.includes("Not allowed")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    console.error("Error updating pipeline:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await isAuthenticatedUser(request);
+    authorizeRoles(user, "admin");
+
+    const pipelineId = (await context.params).id;
+
+    const placed = await prisma.pipelineEntry.count({ where: { pipelineId } });
+    if (placed > 0) {
+      return NextResponse.json(
+        {
+          error: `Cannot delete a pipeline with ${placed} enquiries on it. Move them first.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    await prisma.pipeline.delete({ where: { id: pipelineId } });
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("login") || message.includes("Not allowed")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    console.error("Error deleting pipeline:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/// Dispatches planned filter actions onto a builder. `args` is optional
+/// because zero-argument methods (unassigned, isConverted, ...) omit it.
 export function executeFilterActions(
   builder: any,
-  actions: { method: string; args: any[] }[]
+  actions: { method: string; args?: unknown[] }[]
 ) {
   for (const action of actions) {
     const { method, args } = action;
@@ -10,7 +12,7 @@ export function executeFilterActions(
       throw new Error(`Unknown filter method: ${method}`);
     }
 
-    builder[method](...(args || []));
+    builder[method](...(args ?? []));
   }
 
   return builder;

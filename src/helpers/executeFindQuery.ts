@@ -1,52 +1,79 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import MongoFilterBuilder from '@/app/classes/MongoFilterBuilder';
-import { executeFilterActions } from '@/helpers/executeFilterActions';
-import { getSuccessStageIds } from '@/app/lib/utils/successStages';
-import mongoose, {  SortOrder } from 'mongoose';
+import EnquiryFilterBuilder from "@/app/classes/EnquiryFilterBuilder";
+import prisma from "@/app/lib/db/prisma";
+import { getSuccessStageIds } from "@/app/lib/utils/successStages";
+import { ENQUIRY_INCLUDE, serializeEnquiry } from "@/app/lib/enquiry/serialize";
+import { findMultiAssigneeEnquiryIds } from "@/app/lib/enquiry/assigneeCounts";
+import { executeFilterActions } from "@/helpers/executeFilterActions";
+
+interface FindStep {
+  filterActions?: { method: string; args?: unknown[] }[];
+  sort?: Record<string, number> | null;
+  limit?: number | null;
+}
+
+/// Columns the model may sort by, mapped to a Prisma `orderBy`. Sorting is
+/// not part of the filter allowlist, so it gets its own small map rather than
+/// passing an arbitrary key through to the database.
+const SORTABLE: Record<string, (direction: "asc" | "desc") => object> = {
+  createdAt: (direction) => ({ createdAt: direction }),
+  updatedAt: (direction) => ({ updatedAt: direction }),
+  valuedAt: (direction) => ({ valuedAt: direction }),
+  estimatedValue: (direction) => ({ estimatedValue: direction }),
+  offeredAmount: (direction) => ({ offeredAmount: direction }),
+  caratWeight: (direction) => ({ caratWeight: direction }),
+  metalWeightG: (direction) => ({ metalWeightG: direction }),
+  probability: (direction) => ({ probability: direction }),
+  purchaseYear: (direction) => ({ purchaseYear: direction }),
+  reference: (direction) => ({ reference: direction }),
+  name: (direction) => ({ customer: { name: direction } }),
+};
 
 /**
- * Execute a single "find" step
- * @param ModelClass - Mongoose model
- * @param step - AI query step of type "find"
- * @param tenantId - ObjectId of current user for tenant isolation
- * @returns Mongoose documents array
+ * Runs a single planned "find" step.
+ *
+ * `scopeUserId` is applied before any planned action, so no combination of
+ * filters a model produces can widen a team member's view beyond the
+ * enquiries assigned to them.
  */
 export async function executeFindQuery(
-  ModelClass: mongoose.Model<any>,
-  step: any,
-  tenantId: any
+  step: FindStep,
+  scopeUserId: string | null,
+  maxRows: number
 ) {
-  const builder = MongoFilterBuilder.create();
+  const builder = EnquiryFilterBuilder.create();
 
-  // enforce tenant isolation
-  builder.eq('user', tenantId);
+  if (scopeUserId) builder.assignedTo(scopeUserId);
 
-  // populate before any AI-dispatched isConverted/hasSuccessStage/notConverted call
+  // Populated before any planned isConverted/notConverted call can run.
   builder.setSuccessStageIds(await getSuccessStageIds());
 
-  // apply AI filter actions
-  executeFilterActions(builder, step.filterActions);
+  const actions = step.filterActions ?? [];
 
-  const filter = builder.build();
-  const projection = step.projection || {};
-  const sort = step.sort || {};
-  // const limit = step.limit || 20;
-  const populate = step.populate || [];
-
-  let query = ModelClass.find(filter, projection);
-
-  if (Object.keys(sort).length) {
-    query = query.sort(sort as Record<string, SortOrder>);
+  // `hasMultipleAssignees` has no `where` form — the ids are resolved first
+  // and narrowed with `idIn`, so it is handled before the generic dispatch.
+  const remaining = [];
+  for (const action of actions) {
+    if (action.method === "hasMultipleAssignees") {
+      builder.idIn(await findMultiAssigneeEnquiryIds());
+    } else {
+      remaining.push(action);
+    }
   }
 
-  // if (limit) {
-  //   query = query.limit(limit);
-  // }
+  executeFilterActions(builder, remaining);
 
-  if (populate.length) {
-    query.populate(populate);
-  }
+  const orderBy = (() => {
+    const [key, direction] = Object.entries(step.sort ?? {})[0] ?? [];
+    if (!key || !SORTABLE[key]) return { createdAt: "desc" as const };
+    return SORTABLE[key](Number(direction) >= 0 ? "asc" : "desc");
+  })();
 
-  const data = await query.exec();
-  return data;
+  const enquiries = await prisma.enquiry.findMany({
+    where: builder.build(),
+    include: ENQUIRY_INCLUDE,
+    orderBy,
+    take: Math.min(step.limit ?? maxRows, maxRows),
+  });
+
+  return enquiries.map(serializeEnquiry);
 }

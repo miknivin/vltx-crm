@@ -1,54 +1,45 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import ContactAggregationBuilder from '@/app/classes/ContactAggregationBuilder';
+import EnquiryAggregationBuilder from "@/app/classes/EnquiryAggregationBuilder";
+
+interface AggregateStep {
+  aggregateActions?: { method: string; args?: unknown[] }[];
+  sort?: Record<string, number> | null;
+  limit?: number | null;
+}
+
+/// Methods that need to await something before the query runs.
+const ASYNC_METHODS = new Set(["filterConverted"]);
 
 /**
- * Execute a single "aggregate" step from AI query
- * @param step - AI query step of type "aggregate"
- * @param tenantId - ObjectId of current user
- * @returns Aggregated data array
+ * Runs a single planned "aggregate" step.
+ *
+ * `scopeUserId` is applied first, so a team member's analytics can only ever
+ * cover their own enquiries regardless of what the planner asked for.
  */
-export async function executeAggregateQuery(step: any, tenantId?: any) {
-  const builder = ContactAggregationBuilder.create();
+export async function executeAggregateQuery(
+  step: AggregateStep,
+  scopeUserId: string | null
+) {
+  const builder = EnquiryAggregationBuilder.create();
 
-  if (tenantId) {
-    builder.match({ user: tenantId });
-  }
+  if (scopeUserId) builder.scopeToUser(scopeUserId);
 
-  // ── enforce tenant isolation ────────────────────────────
+  for (const action of step.aggregateActions ?? []) {
+    const { method, args } = action;
+    const fn = (builder as unknown as Record<string, unknown>)[method];
 
-  // ── apply AI aggregate actions ──────────────────────────
-  if (Array.isArray(step.aggregateActions)) {
-    for (const action of step.aggregateActions) {
-      const { method, args } = action;
+    if (typeof fn !== "function") {
+      throw new Error(`Unknown aggregate method: ${method}`);
+    }
 
-      // Normalize method calls to the builder
-      if (typeof (builder as any)[method] === 'function') {
-        (builder as any)[method](...(args || []));
-      } else {
-        console.warn(`Unknown aggregate method: ${method}`);
-      }
+    if (ASYNC_METHODS.has(method)) {
+      await (fn as (...rest: unknown[]) => Promise<unknown>).call(builder, ...(args ?? []));
+    } else {
+      (fn as (...rest: unknown[]) => unknown).call(builder, ...(args ?? []));
     }
   }
 
-  // ── Sorting, limiting, projecting if defined in step ───
-  if (step.sort) {
-    builder.sort(step.sort);
-  }
+  if (step.sort) builder.sort(step.sort);
+  if (step.limit) builder.limit(step.limit);
 
-  const hasGroup = step.aggregateActions?.some(
-  (a: any) => a.method.toLowerCase().includes('group')
-);
-
-if (step.projection && !hasGroup) {
-  builder.project(step.projection);
-}
-
-// if (step.limit && !hasGroup) {
-//   builder.limit(step.limit);
-// }
-
-
-  // ── Execute pipeline ───────────────────────────────────
-  const data = await builder.exec();
-  return data;
+  return builder.exec();
 }

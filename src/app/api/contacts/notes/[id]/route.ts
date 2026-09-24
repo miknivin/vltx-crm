@@ -1,18 +1,21 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-expressions */
-import { NextRequest, NextResponse } from 'next/server';
-import mongoose, { Types } from 'mongoose';
-import Contact, { IContact, Tag } from '@/app/models/Contact';
-import dbConnect from '@/app/lib/db/connection';
-import { authorizeRoles, isAuthenticatedUser } from '../../../middlewares/auth';
-import Pipeline from '@/app/models/Pipeline';
-import User from '@/app/models/User';
-import Stage from '@/app/models/Stage';
+import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
+import { authorizeRoles, isAuthenticatedUser } from "../../../middlewares/auth";
 
-// Interface for request body
-interface UpdateContactRequest {
-  tags?: Tag[];
+interface UpdateEnquiryNotesRequest {
+  tags?: { name: string }[];
   notes?: string;
+}
+
+async function requireStaff(request: NextRequest) {
+  const user = await isAuthenticatedUser(request);
+  try {
+    authorizeRoles(user, "admin", "team_member");
+  } catch {
+    throw new Error("User is neither admin nor team_member");
+  }
+  return user;
 }
 
 export async function GET(
@@ -20,206 +23,136 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Authenticate user
-    const currentUser: any = await isAuthenticatedUser(request);
-    if (!currentUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Authorize roles: admin or team_member
-    try {
-      authorizeRoles(currentUser, 'admin');
-    } catch (error) {
-      console.log(error)
-      try {
-        authorizeRoles(currentUser, 'team_member');
-      } catch (error) {
-        console.log(error);
-        return NextResponse.json(
-          { error: 'User is neither admin nor team_member' },
-          { status: 401 }
-        );
-      }
-    }
-
-    // Connect to MongoDB
-    Pipeline
-    Stage
-    await dbConnect();
-
-    // Get contact ID from params
+    await requireStaff(request);
     const { id } = await context.params;
-    if (!id || !Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { error: 'Invalid contact ID' },
-        { status: 400 }
-      );
-    }
 
-    // Find the contact and select only notes and tags
-    const contact = await Contact.findById(id).select('notes tags').lean();
-    if (!contact) {
-      return NextResponse.json(
-        { error: 'Contact not found' },
-        { status: 404 }
-      );
+    const enquiry = await prisma.enquiry.findUnique({
+      where: { id },
+      select: {
+        notes: true,
+        tags: { select: { id: true, name: true, userId: true } },
+      },
+    });
+
+    if (!enquiry) {
+      return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
     }
 
     return NextResponse.json(
-      { message: 'Contact notes and tags retrieved successfully', notes: contact.notes, tags: contact.tags },
+      {
+        message: "Enquiry notes and tags retrieved successfully",
+        notes: enquiry.notes,
+        tags: enquiry.tags.map((tag) => ({
+          _id: tag.id,
+          name: tag.name,
+          user: tag.userId,
+        })),
+      },
       { status: 200 }
     );
-  } catch (error) {
-    console.error('Error retrieving contact:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("login") || message.includes("neither admin")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    console.error("Error retrieving enquiry notes:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// PATCH handler to update contact's tags and notes
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Authenticate user
-    const currentUser = await isAuthenticatedUser(request);
-    if (!currentUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    User
-    // Authorize roles: admin or team_member
-    try {
-       authorizeRoles(currentUser, 'admin');
-    } catch (error) {
-      console.log('Admin authorization failed:', error);
-      try {
-        authorizeRoles(currentUser, 'team_member');
-      } catch (error) {
-        console.log('Team member authorization failed:', error);
-        return NextResponse.json(
-          { error: 'User is neither admin nor team_member' },
-          { status: 401 }
-        );
-      }
-    }
-
-    const userId = new Types.ObjectId(currentUser._id);
-    Pipeline
-    Stage
-    // Connect to MongoDB
-    await dbConnect();
-
-    // Get contact ID from params
-    const contactId = await context.params;
-    if (!contactId && !Types.ObjectId.isValid(contactId)) {
-      return NextResponse.json(
-        { error: 'Invalid contact ID' },
-        { status: 400 }
-      );
-    }
-
-    // Parse request body
-    const body: UpdateContactRequest = await request.json();
+    const currentUser = await requireStaff(request);
+    const { id } = await context.params;
+    const body: UpdateEnquiryNotesRequest = await request.json();
     const { tags, notes } = body;
 
-    // Start a MongoDB session for transaction
-    const dbSession = await mongoose.startSession();
-    let contact: IContact | null = null;
-    try {
-      await dbSession.withTransaction(async () => {
-        // Find the contact
-        
-        contact = await Contact.findById(contactId.id).session(dbSession);
-        if (!contact) {
-          throw new Error('Contact not found');
-        }
+    const existing = await prisma.enquiry.findUnique({
+      where: { id },
+      select: { id: true, notes: true, tags: { select: { name: true } } },
+    });
 
-        // Prepare update object
-        const update: Partial<IContact> = {};
-        const activities: Array<{
-          action: IContact['activities'][number]['action'];
-          details: Record<string, unknown>;
-        }> = [];
+    if (!existing) {
+      return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    }
 
-        // Handle tags update
-        if (tags !== undefined) {
-          const oldTags = contact.tags.map((tag: Tag) => tag.name);
-          const newTags = tags ? tags.map((tag) => tag.name) : [];
+    const oldTags = existing.tags.map((tag) => tag.name);
+    const newTags = tags?.map((tag) => tag.name);
+    const addedTags = newTags?.filter((tag) => !oldTags.includes(tag)) ?? [];
+    const removedTags = newTags ? oldTags.filter((tag) => !newTags.includes(tag)) : [];
 
-          // Identify added and removed tags
-          const addedTags = newTags.filter((tag) => !oldTags.includes(tag));
-          const removedTags = oldTags.filter((tag) => !newTags.includes(tag));
+    const updated = await prisma.$transaction(async (tx) => {
+      const data: Prisma.EnquiryUpdateInput = {};
+      if (notes !== undefined) data.notes = notes || null;
+      if (newTags) {
+        data.tags = {
+          deleteMany: {},
+          create: newTags.map((name) => ({ name, userId: currentUser.id })),
+        };
+      }
 
-          // Clear existing tags and create new subdocuments
-          contact.tags.splice(0, contact.tags.length);
-          if (tags) {
-            tags.forEach((tag) => {
-              contact!.tags.push({
-                user: tag.user || userId,
-                name: tag.name,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              } as any);
-            });
-          }
-
-          // Log tag activities
-          if (addedTags.length > 0) {
-            activities.push({
-              action: 'TAG_ADDED',
-              details: { addedTags },
-            });
-          }
-          if (removedTags.length > 0) {
-            activities.push({
-              action: 'TAG_REMOVED',
-              details: { removedTags },
-            });
-          }
-        }
-
-        // Handle notes update
-        if (notes !== undefined) {
-          update.notes = notes;
-          activities.push({
-            action: contact.notes ? 'NOTE_UPDATED' : 'NOTE_ADDED',
-            details: { newNotes: notes },
-          });
-        }
-
-        // Update contact if there are changes
-        if (Object.keys(update).length > 0 || activities.length > 0) {
-          Object.assign(contact, update);
-          
-          // Log activities
-          for (const activity of activities) {
-            await contact.logActivity(activity.action, userId, activity.details, dbSession);
-          }
-
-          await contact.save({ session: dbSession });
-        }
+      const enquiry = await tx.enquiry.update({
+        where: { id },
+        data,
+        select: {
+          notes: true,
+          tags: { select: { id: true, name: true, userId: true } },
+        },
       });
 
-      return NextResponse.json(
-        { message: 'Contact updated successfully', contact },
-        { status: 200 }
-      );
-    } finally {
-      dbSession.endSession();
-    }
-  } catch (error) {
-    console.error('Error updating contact:', error);
+      const activities: Prisma.EnquiryActivityCreateManyInput[] = [];
+      if (addedTags.length) {
+        activities.push({
+          enquiryId: id,
+          userId: currentUser.id,
+          action: "TAG_ADDED",
+          details: { addedTags },
+        });
+      }
+      if (removedTags.length) {
+        activities.push({
+          enquiryId: id,
+          userId: currentUser.id,
+          action: "TAG_REMOVED",
+          details: { removedTags },
+        });
+      }
+      if (notes !== undefined && notes !== existing.notes) {
+        activities.push({
+          enquiryId: id,
+          userId: currentUser.id,
+          action: existing.notes ? "NOTE_UPDATED" : "NOTE_ADDED",
+          details: { notes },
+        });
+      }
+      if (activities.length) {
+        await tx.enquiryActivity.createMany({ data: activities });
+      }
+
+      return enquiry;
+    });
+
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      {
+        message: "Enquiry updated successfully",
+        notes: updated.notes,
+        tags: updated.tags.map((tag) => ({
+          _id: tag.id,
+          name: tag.name,
+          user: tag.userId,
+        })),
+      },
+      { status: 200 }
     );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("login") || message.includes("neither admin")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    console.error("Error updating enquiry notes:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

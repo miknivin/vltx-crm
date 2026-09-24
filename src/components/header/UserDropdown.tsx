@@ -7,7 +7,7 @@ import { RootState } from "@/app/redux/rootReducer";
 import { useRouter } from "next/navigation";
 import { useLogoutMutation } from "@/app/redux/api/authApi";
 
-export function getUserInitials(name?: string) {
+export function getUserInitials(name?: string | null) {
   const nameParts = name ? name.trim().split(/\s+/) : [];
   return nameParts.length >= 2
     ? `${nameParts[0].charAt(0).toUpperCase()}${nameParts[nameParts.length - 1].charAt(0).toUpperCase()}`

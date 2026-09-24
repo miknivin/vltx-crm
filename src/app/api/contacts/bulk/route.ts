@@ -1,190 +1,157 @@
-/* eslint-disable @typescript-eslint/no-unused-expressions */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server';
-import mongoose, { Types } from 'mongoose';
-import dbConnect from '@/app/lib/db/connection';
-import Contact, { IContact } from '@/app/models/Contact';
-import User from '@/app/models/User';
-import { authorizeRoles, isAuthenticatedUser } from '../../middlewares/auth';
-import Pipeline from '@/app/models/Pipeline';
-import Stage from '@/app/models/Stage';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/app/lib/db/prisma";
+import { authorizeRoles, isAuthenticatedUser } from "../../middlewares/auth";
+import { createEnquiry, EnquiryInputError } from "@/app/lib/enquiry/createEnquiry";
 
-interface PayloadContact {
+interface PayloadRow {
   name: string;
-  email: string;
-  phone: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  city?: string;
   tags?: string;
   isDuplicate?: boolean;
-  businessName?: string;
   source?: string;
-  preferredVisitingTime?: string;
-  numberOfPeople?: string | number;
-  preferredNightsAndDays?: string;
+
+  // Asset columns, matching the website form's vocabulary.
+  category?: string;
+  jewelleryType?: string;
+  brand?: string;
+  metalWeight?: string | number;
+  carat?: string | number;
+  shapeCut?: string;
+  condition?: string;
+  certificateAvailable?: string;
+  certificateLab?: string;
+  purchaseYear?: string | number;
+  description?: string;
 }
 
-interface ContactPayload {
-  contacts: PayloadContact[];
+interface BulkPayload {
+  contacts: PayloadRow[];
   assignedUsers: string[];
-  assignType: 'every' | 'equally' | 'roundRobin';
+  assignType: "every" | "equally" | "roundRobin";
   addToPipeline: boolean;
-  // Applied to every row that doesn't already have a per-row mapped source.
+  /// Applied to every row without its own mapped source.
   source?: string;
+  /// Used when a row's spreadsheet has no category column.
+  defaultCategory?: string;
 }
-
-const PIPELINE_ID = new mongoose.Types.ObjectId(process.env.DEFAULT_PIPELINE);
-const STAGE_ID = new mongoose.Types.ObjectId(process.env.DEFAULT_STAGE);
 
 export async function POST(request: NextRequest) {
   try {
     const currentUser = await isAuthenticatedUser(request);
-    authorizeRoles(currentUser, 'admin');
-    Pipeline
-    Stage
-    User
-    await dbConnect();
+    authorizeRoles(currentUser, "admin");
 
-    const payload: ContactPayload = await request.json();
+    const payload: BulkPayload = await request.json();
 
     if (!payload.contacts || !Array.isArray(payload.contacts)) {
-      return NextResponse.json({ error: 'Invalid contacts array' }, { status: 400 });
+      return NextResponse.json({ error: "Invalid contacts array" }, { status: 400 });
     }
     if (!payload.assignedUsers || !Array.isArray(payload.assignedUsers)) {
-      return NextResponse.json({ error: 'Invalid assignedUsers array' }, { status: 400 });
+      return NextResponse.json({ error: "Invalid assignedUsers array" }, { status: 400 });
     }
-    if (!['every', 'equally', 'roundRobin'].includes(payload.assignType)) {
-      return NextResponse.json({ error: 'Invalid assignType' }, { status: 400 });
-    }
-
-    const users = await User.find({ _id: { $in: payload.assignedUsers } });
-    if (users.length !== payload.assignedUsers.length) {
-      return NextResponse.json({ error: 'One or more assignedUsers not found' }, { status: 400 });
+    if (!["every", "equally", "roundRobin"].includes(payload.assignType)) {
+      return NextResponse.json({ error: "Invalid assignType" }, { status: 400 });
     }
 
-    const processedContacts: IContact[] = [];
-    const failedContacts: { contact: PayloadContact; error: string }[] = [];
+    if (payload.assignedUsers.length) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: payload.assignedUsers } },
+        select: { id: true },
+      });
+      if (users.length !== new Set(payload.assignedUsers).size) {
+        return NextResponse.json(
+          { error: "One or more assignedUsers not found" },
+          { status: 400 }
+        );
+      }
+    }
 
-    await Promise.all(
-      payload.contacts.map(async (contact, index) => {
-        try {
-          const requiredFields = ['name', 'email', 'phone'];
-          for (const field of requiredFields) {
-            if (!contact[field as keyof PayloadContact]) {
-              throw new Error(`Missing required field: ${field}`);
-            }
-          }
+    const assigneeFor = (index: number): string | null => {
+      if (!payload.assignedUsers.length) return null;
+      // `every` cannot be expressed one-assignee-at-a-time here, so it is
+      // applied as a follow-up assignment below.
+      if (payload.assignType === "every") return null;
+      return payload.assignedUsers[index % payload.assignedUsers.length];
+    };
 
-          if (!/^[^@]+@[^@]+\.[^@]+$/.test(contact.email)) {
-            throw new Error(`Invalid email format: ${contact.email}`);
-          }
+    const created: string[] = [];
+    const failed: { contact: PayloadRow; error: string }[] = [];
 
-          if (!/^\+?\d{10,15}$/.test(contact.phone.replace(/[\-\s()]/g, ''))) {
-            throw new Error(`Invalid phone format: ${contact.phone}`);
-          }
-
-          const assignedTo: { user: Types.ObjectId; time: Date }[] = [];
-
-          if (!contact.isDuplicate) {
-            if (payload.assignType === 'every') {
-              payload.assignedUsers.forEach((userId) => {
-                assignedTo.push({
-                  user: new mongoose.Types.ObjectId(userId),
-                  time: new Date(),
-                });
-              });
-            } else if (payload.assignType === 'equally') {
-              const usersCount = payload.assignedUsers.length;
-              const contactsPerUser = Math.floor(payload.contacts.length / usersCount);
-              const remainderStartIndex = contactsPerUser * usersCount;
-
-              if (index < remainderStartIndex) {
-                const userIndex = Math.floor(index / contactsPerUser);
-                assignedTo.push({
-                  user: new mongoose.Types.ObjectId(payload.assignedUsers[userIndex]),
-                  time: new Date(),
-                });
-              } else {
-                const remainderIndex = index - remainderStartIndex;
-                assignedTo.push({
-                  user: new mongoose.Types.ObjectId(
-                    payload.assignedUsers[remainderIndex % usersCount]
-                  ),
-                  time: new Date(),
-                });
-              }
-            } else if (payload.assignType === 'roundRobin') {
-              assignedTo.push({
-                user: new mongoose.Types.ObjectId(
-                  payload.assignedUsers[index % payload.assignedUsers.length]
-                ),
-                time: new Date(),
-              });
-            }
-          }
-
-          const parsedNumberOfPeople =
-            contact.numberOfPeople !== undefined && contact.numberOfPeople !== ""
-              ? Number(String(contact.numberOfPeople).replace(/[^\d.]/g, ""))
-              : undefined;
-
-          const contactData: Partial<IContact> = {
-            name: contact.name,
-            email: contact.email,
-            phone: contact.phone,
-            businessName: contact.businessName || "Nil",
-            source: contact.source || payload.source || 'bulk_import',
-            ...(contact.preferredVisitingTime ? { preferredVisitingTime: contact.preferredVisitingTime } : {}),
-            ...(parsedNumberOfPeople !== undefined && !Number.isNaN(parsedNumberOfPeople)
-              ? { numberOfPeople: parsedNumberOfPeople }
-              : {}),
-            ...(contact.preferredNightsAndDays ? { preferredNightsAndDays: contact.preferredNightsAndDays } : {}),
-            tags: contact.tags
-              ? new mongoose.Types.DocumentArray([
-                  {
-                    user: new mongoose.Types.ObjectId(currentUser._id),
-                    name: contact.tags,
-                  },
-                ])
-              : new mongoose.Types.DocumentArray([]),
-            pipelinesActive: payload.addToPipeline
-              ? new mongoose.Types.DocumentArray([
-                  {
-                    pipeline_id: PIPELINE_ID,
-                    stage_id: STAGE_ID,
-                    order: 0,
-                  },
-                ])
-              : new mongoose.Types.DocumentArray([]),
-          };
-
-          if (!contact.isDuplicate) {
-            contactData.assignedTo = new mongoose.Types.DocumentArray(assignedTo);
-          }
-
-          const updatedContact = await Contact.upsertContact(
-            contactData,
-            currentUser._id ? new Types.ObjectId(currentUser._id) : new Types.ObjectId("6847dc679c7418164de7d8f3")
-          );
-
-          processedContacts.push(updatedContact);
-        } catch (error: any) {
-          failedContacts.push({
-            contact,
-            error: error.message || 'Failed to process contact',
-          });
+    // Sequential rather than Promise.all: rows sharing a mobile number must
+    // resolve to the same customer, and concurrent upserts on that unique
+    // column would race each other into constraint violations.
+    for (const [index, row] of payload.contacts.entries()) {
+      try {
+        if (row.isDuplicate) {
+          failed.push({ contact: row, error: "Skipped as duplicate" });
+          continue;
         }
-      })
-    );
+
+        const enquiry = await createEnquiry(
+          {
+            name: row.name,
+            mobile: row.mobile ?? row.phone ?? "",
+            email: row.email,
+            city: row.city,
+            category: row.category ?? payload.defaultCategory ?? "Other Luxury Asset",
+            jewelleryType: row.jewelleryType,
+            brand: row.brand,
+            metalWeight: row.metalWeight,
+            carat: row.carat,
+            shapeCut: row.shapeCut,
+            condition: row.condition,
+            certificateAvailable: row.certificateAvailable,
+            certificateLab: row.certificateLab,
+            purchaseYear: row.purchaseYear,
+            description: row.description,
+            tags: row.tags
+              ? row.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+              : undefined,
+            sourceTitle: row.source ?? payload.source,
+            assignToUserId: assigneeFor(index),
+          },
+          currentUser.id
+        );
+
+        created.push(enquiry.id);
+      } catch (error: unknown) {
+        failed.push({
+          contact: row,
+          error:
+            error instanceof EnquiryInputError
+              ? error.message
+              : "Could not import this row",
+        });
+      }
+    }
+
+    if (payload.assignType === "every" && payload.assignedUsers.length && created.length) {
+      await prisma.enquiryAssignment.createMany({
+        data: created.flatMap((enquiryId) =>
+          payload.assignedUsers.map((userId) => ({ enquiryId, userId }))
+        ),
+        skipDuplicates: true,
+      });
+    }
 
     return NextResponse.json(
       {
-        message: `Processed ${processedContacts.length} contacts successfully, ${failedContacts.length} failed`,
-        contacts: processedContacts,
-        failed: failedContacts,
+        message: "Bulk import complete",
+        createdCount: created.length,
+        failedCount: failed.length,
+        failed,
       },
-      { status: failedContacts.length > 0 ? 207 : 201 }
+      { status: created.length ? 201 : 400 }
     );
-  } catch (error: any) {
-    console.error('Error processing contacts:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const unauthorized = message.includes("login") || message.includes("Not allowed");
+    if (!unauthorized) console.error("Error bulk-importing enquiries:", error);
+    return NextResponse.json(
+      { error: unauthorized ? message : "Internal server error" },
+      { status: unauthorized ? 401 : 500 }
+    );
   }
 }

@@ -45,7 +45,8 @@ interface TaskFormState {
 
 interface SelectedAssignee {
   _id: string;
-  name?: string;
+  /// Nullable because a user row may have no name set.
+  name?: string | null;
 }
 
 const emptyForm: TaskFormState = {
@@ -71,7 +72,7 @@ function UserDropdown({
   onSelectMember,
 }: {
   isLoading: boolean;
-  teamMembers: Array<{ _id?: string; name?: string; email?: string }>;
+  teamMembers: Array<{ _id?: string; name?: string | null; email?: string | null }>;
   selectedIds: string[];
   onSelectMember: (memberId: string) => void;
 }) {
@@ -133,11 +134,14 @@ export default function TaskForm({ contact, editingTask, onClose, onCancelEdit, 
       return;
     }
 
-    const assignees = (editingTask.assignedTo || [])
+    // Annotated rather than narrowed with a predicate: the mapped objects are
+    // already the right shape, and a predicate asserting `SelectedAssignee`
+    // over the mapped union no longer typechecks now that `name` is nullable.
+    const assignees: SelectedAssignee[] = (editingTask.assignedTo || [])
       .map((assignee) =>
         typeof assignee === "string" ? { _id: assignee } : { _id: assignee._id, name: assignee.name }
       )
-      .filter((assignee): assignee is SelectedAssignee => Boolean(assignee._id));
+      .filter((assignee) => Boolean(assignee._id));
 
     setForm({
       title: editingTask.title || "",
@@ -186,7 +190,7 @@ export default function TaskForm({ contact, editingTask, onClose, onCancelEdit, 
     setForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
   };
 
-  const handleAssigneeToggle = (userId: string, name?: string) => {
+  const handleAssigneeToggle = (userId: string, name?: string | null) => {
     setForm((current) => ({
       ...current,
       assignedTo: current.assignedTo.includes(userId)

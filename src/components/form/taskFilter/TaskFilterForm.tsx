@@ -1,6 +1,6 @@
 "use client";
 
-import { IUser } from "@/app/models/User";
+import type { IUser } from "@/app/types/user";
 import { useGetTeamMembersQuery } from "@/app/redux/api/userApi";
 import Chip from "@/components/ui/chips/Chip";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -14,7 +14,9 @@ interface TaskFilterFormProps {
 interface SelectedUser {
   _id: string;
   isNot: boolean;
-  name?: string;
+  /// Nullable because a user row may have no name — the display falls back to
+  /// the team-member lookup, then to a generic label.
+  name?: string | null;
 }
 
 interface ContactOption {

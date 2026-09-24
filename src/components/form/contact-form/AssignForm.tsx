@@ -5,7 +5,7 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 import { useGetTeamMembersQuery } from "@/app/redux/api/userApi";
 import { useAssignContactsMutation } from "@/app/redux/api/contactApi";
-import { IUser } from "@/app/models/User";
+import type { IUser } from "@/app/types/user";
 import Chip from "@/components/ui/chips/Chip";
 import ShortSpinnerDark from "@/components/ui/loaders/ShortSpinnerDark";
 

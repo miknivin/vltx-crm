@@ -1,22 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-expressions */
-import { NextRequest, NextResponse } from 'next/server';
-import mongoose, { Types } from 'mongoose';
-import Contact from '@/app/models/Contact';
-import Stage from '@/app/models/Stage';
-import Pipeline from '@/app/models/Pipeline'; // Registers "Pipeline" — required by Contact's pre-save hook
-import User from '@/app/models/User'; // Registers "User" — required by the populate() calls below
-import dbConnect from '@/app/lib/db/connection';
-import { isAuthenticatedUser, authorizeRoles } from '@/app/api/middlewares/auth';
-import { logContactActivity } from '@/app/api/utils/activityLog';
-import { getPipelineStageNameMap } from '@/app/lib/utils/pipelineStageNames';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/app/lib/db/prisma";
+import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
+import { ENQUIRY_INCLUDE, serializeEnquiry } from "@/app/lib/enquiry/serialize";
 
-// Environment variable for the fixed pipeline ID
-const DEFAULT_PIPELINE_ID = process.env.DEFAULT_PIPELINE || '6858217887f5899a7e6fc6f1';
-
-// Interface for request body
 interface UpdateStageRequest {
   stageId: string;
+  /// Position within the destination column. Omitted means "append".
+  order?: number;
+  pipelineId?: string;
 }
 
 export async function PATCH(
@@ -24,173 +15,128 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Connect to MongoDB
-    await dbConnect();
-    Pipeline
-    User
+    const user = await isAuthenticatedUser(request);
 
-    // Authenticate user
-    let user;
-    try {
-      user = await isAuthenticatedUser(request);
-    } catch (error: any) {
-      return NextResponse.json(
-        { success: false, error: error.message || 'Authentication failed' },
-        { status: 401 }
-      );
-    }
-
-    if (!user._id || !Types.ObjectId.isValid(user._id)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid user ID' },
-        { status: 401 }
-      );
-    }
-    const userId = user._id.toString();
-
-    // Check user role
     let isAdmin = false;
     try {
-      authorizeRoles(user, 'admin');
+      authorizeRoles(user, "admin");
       isAdmin = true;
-    } catch (error) {
-      console.log('Admin authorization failed:', error);
+    } catch {
       try {
-        authorizeRoles(user, 'team_member');
-      } catch (error) {
-        console.log('Team member authorization failed:', error);
+        authorizeRoles(user, "team_member");
+      } catch {
         return NextResponse.json(
-          { success: false, error: 'User is neither admin nor team member' },
+          { success: false, error: "User is neither admin nor team member" },
           { status: 401 }
         );
       }
     }
 
-    // Get id from params
     const { id } = await context.params;
-    if (!id || !Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid or missing contact ID' },
-        { status: 400 }
-      );
-    }
-
-    // Parse request body
     const body: UpdateStageRequest = await request.json();
     const { stageId } = body;
 
-    // Validate stageId
-    if (!stageId || !Types.ObjectId.isValid(stageId)) {
+    if (!stageId) {
       return NextResponse.json(
-        { success: false, error: 'Invalid or missing stage ID' },
+        { success: false, error: "Missing stage ID" },
         { status: 400 }
       );
     }
 
-    // Find the contact based on role
-    const contactQuery = isAdmin ? { _id: id } : { _id: id, 'assignedTo.user': user._id };
-    const contact = await Contact.findOne(contactQuery);
-    if (!contact) {
+    const pipelineId = body.pipelineId || process.env.DEFAULT_PIPELINE;
+    if (!pipelineId) {
       return NextResponse.json(
-        { success: false, error: 'Contact not found or unauthorized' },
+        { success: false, error: "No pipeline configured" },
+        { status: 500 }
+      );
+    }
+
+    const enquiry = await prisma.enquiry.findUnique({
+      where: { id },
+      select: { id: true, assignedTo: { select: { userId: true } } },
+    });
+
+    if (
+      !enquiry ||
+      (!isAdmin && !enquiry.assignedTo.some((a) => a.userId === user.id))
+    ) {
+      return NextResponse.json(
+        { success: false, error: "Enquiry not found or unauthorized" },
         { status: 404 }
       );
     }
 
-    // Find the pipeline entry in pipelinesActive
-    const pipelineEntry = contact.pipelinesActive.find(
-      (entry: { pipeline_id: Types.ObjectId }) =>
-        entry.pipeline_id.toString() === DEFAULT_PIPELINE_ID
-    );
+    const entry = await prisma.pipelineEntry.findUnique({
+      where: { enquiryId_pipelineId: { enquiryId: id, pipelineId } },
+      include: { stage: { select: { id: true, name: true } } },
+    });
 
-    if (!pipelineEntry) {
+    if (!entry) {
       return NextResponse.json(
-        { success: false, error: 'Contact is not associated with the specified pipeline' },
+        { success: false, error: "Enquiry is not associated with the specified pipeline" },
         { status: 400 }
       );
     }
 
-    // Check if the stageId is valid for the pipeline
-    const stage = await Stage.findOne({
-      _id: stageId,
-      pipeline_id: DEFAULT_PIPELINE_ID,
+    const stage = await prisma.stage.findFirst({
+      where: { id: stageId, pipelineId },
+      select: { id: true, name: true, probability: true },
     });
 
     if (!stage) {
       return NextResponse.json(
-        { success: false, error: 'Invalid stage ID for the specified pipeline' },
+        { success: false, error: "Stage not found or does not belong to the pipeline" },
         { status: 400 }
       );
     }
 
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
-        const contactForUpdate = await Contact.findOne(contactQuery).session(session);
-        if (!contactForUpdate) {
-          throw new Error('Contact not found or unauthorized');
-        }
-
-        const pipelineEntryForUpdate = contactForUpdate.pipelinesActive.find(
-          (entry: { pipeline_id: Types.ObjectId }) =>
-            entry.pipeline_id.toString() === DEFAULT_PIPELINE_ID
-        );
-        if (!pipelineEntryForUpdate) {
-          throw new Error('Contact is not associated with the specified pipeline');
-        }
-
-        const oldStageId = pipelineEntryForUpdate.stage_id.toString();
-        pipelineEntryForUpdate.stage_id = new Types.ObjectId(stageId);
-
-        const { getPipelineName, getStageName } = await getPipelineStageNameMap(
-          [DEFAULT_PIPELINE_ID],
-          [oldStageId, stageId]
-        );
-
-        await contactForUpdate.logActivity('PIPELINE_STAGE_UPDATED', new Types.ObjectId(userId), {
-          pipelineName: getPipelineName(DEFAULT_PIPELINE_ID),
-          oldStageName: getStageName(oldStageId),
-          newStageName: getStageName(stageId),
-        }, session);
-
-        await logContactActivity({
-          contactId: contactForUpdate._id,
-          event: 'PIPELINE_STAGE_CHANGED',
-          description: 'Pipeline stage changed',
-          performedBy: userId,
-          metadata: {
-            pipelineName: getPipelineName(DEFAULT_PIPELINE_ID),
-            oldStageName: getStageName(oldStageId),
-            newStageName: getStageName(stageId),
-          },
-          session,
-        });
-      });
-    } finally {
-      await session.endSession();
+    if (entry.stageId === stage.id && body.order === undefined) {
+      return NextResponse.json(
+        { success: true, contact: null, message: "Enquiry is already in this stage" },
+        { status: 200 }
+      );
     }
 
-    // Fetch updated contact with populated fields
-    const updatedContact = await Contact.findById(id)
-      .select('-activities')
-      .populate('assignedTo.user', 'name')
-      .populate('tags.user', 'name')
-      .populate('user', 'name')
-      .lean();
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.pipelineEntry.update({
+        where: { id: entry.id },
+        data: {
+          stageId: stage.id,
+          ...(body.order !== undefined && { order: body.order }),
+        },
+      });
+
+      // The stage carries the odds of closing, so moving a card moves the
+      // enquiry's probability with it — the board is the source of truth.
+      const result = await tx.enquiry.update({
+        where: { id },
+        data: { probability: stage.probability },
+        include: ENQUIRY_INCLUDE,
+      });
+
+      await tx.enquiryActivity.create({
+        data: {
+          enquiryId: id,
+          userId: user.id,
+          action: "PIPELINE_STAGE_UPDATED",
+          details: { fromStage: entry.stage.name, toStage: stage.name },
+        },
+      });
+
+      return result;
+    });
 
     return NextResponse.json(
-      {
-        success: true,
-        message: 'Contact stage updated successfully',
-        contact: updatedContact,
-      },
+      { success: true, contact: serializeEnquiry(updated) },
       { status: 200 }
     );
-  } catch (error: any) {
-    console.error('Error updating contact stage:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const unauthorized = message.includes("login") || message.includes("Not allowed");
+    if (!unauthorized) console.error("Error updating enquiry stage:", error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
-      { status: error.message.includes('login') || error.message.includes('Not allowed') ? 401 : 500 }
+      { success: false, error: unauthorized ? message : "Internal server error" },
+      { status: unauthorized ? 401 : 500 }
     );
   }
 }

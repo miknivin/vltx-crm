@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createApi, fetchBaseQuery, retry } from "@reduxjs/toolkit/query/react";
-import { IContact } from "@/app/models/Contact";
+import type { IContact } from "@/app/types/enquiry";
 import { FilterParams } from "@/components/tables/ContactTableOne";
 import { userApi } from "./userApi";
 import { pipelineApi } from "./pipelineApi";
@@ -8,31 +8,36 @@ import { pipelineApi } from "./pipelineApi";
 
 export interface ResponseActivity {
   _id: string;
+  /// Mirrors the EnquiryActivityAction enum in the Prisma schema.
   action:
-    | 'CONTACT_CREATED'
-    | 'CONTACT_UPDATED'
+    | 'ENQUIRY_CREATED'
+    | 'ENQUIRY_UPDATED'
     | 'TAG_ADDED'
     | 'TAG_REMOVED'
     | 'NOTE_ADDED'
     | 'NOTE_UPDATED'
-    | 'PIPELINE_ADDED'
-    | 'PIPELINE_STAGE_UPDATED'
-    | 'PIPELINE_STAGE_CHANGED'
-    | 'ASSIGNED_TO_UPDATED'
-    | 'TASK_CREATED'
-    | 'TASK_UPDATED'
-    | 'TASK_DELETED'
     | 'REMARK_ADDED'
-    | 'CONTACT_RESPONSE_ADDED'
-    | 'CONTACT_RESPONSE_UPDATED';
-  user: { _id: string; name: string; email?: string };
+    | 'PIPELINE_ADDED'
+    | 'PIPELINE_REMOVED'
+    | 'PIPELINE_STAGE_UPDATED'
+    | 'ASSIGNED_TO_UPDATED'
+    | 'PHOTO_ADDED'
+    | 'VALUATION_RECORDED'
+    | 'OFFER_MADE';
+  user: { _id: string; name: string | null; email?: string } | null;
   details: Record<string, unknown>;
   createdAt: string;
   meetingScheduledDate?:any
 }
-export type ResponseContact = Omit<IContact, "uid" | "activities"> & {
-  _id: string;
-  activities: ResponseActivity[];
+export type ResponseContact = IContact & {
+  /// Present only on the detail endpoint, which includes them alongside the
+  /// paginated activity feed.
+  remarks?: {
+    _id: string;
+    text: string;
+    createdAt: string;
+    createdBy: { _id: string; name: string | null; email?: string } | null;
+  }[];
 };
 
 export type TaskStatus = "open" | "in_progress" | "done";
@@ -89,15 +94,23 @@ interface FilterContactsRequest {
 
 interface ContactRequest {
   name: string;
-  email: string;
-  phone: string;
-  userId: string;
+  mobile: string;
+  email?: string;
+  city?: string;
+  category: string;
+  jewelleryType?: string;
+  brand?: string;
+  metalWeight?: number | string;
+  carat?: number | string;
+  shapeCut?: string;
+  condition?: string;
+  certificateAvailable?: string | boolean;
+  certificateLab?: string;
+  purchaseYear?: number | string;
+  description?: string;
   notes?: string;
   tags?: string[];
   source?: string;
-  preferredVisitingTime?: string;
-  numberOfPeople?: number | string;
-  preferredNightsAndDays?: string;
 }
 
 interface CreateContactApiResponse {
@@ -138,15 +151,16 @@ interface BatchUpdateContactDragResponse {
 
 interface UpdateContactRequest {
   id: string;
-  name: string;
-  email: string;
-  phone: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
   notes?: string;
   tags?: { name: string }[]; // Send only name, backend sets user
-  businessName?: string;
-  preferredVisitingTime?: string;
-  numberOfPeople?: number | string;
-  preferredNightsAndDays?: string;
+  brand?: string;
+  estimatedValue?: number | string;
+  offeredAmount?: number | string;
+  source?: string;
 }
 
 interface UpdateContactApiResponse {
@@ -203,23 +217,28 @@ interface GetContactNotesAndTagsResponse {
 }
 
 interface ContactPayload {
-  contacts: any[];
+  contacts: (ImportRow & { isDuplicate?: boolean })[];
   assignedUsers: string[];
   assignType: "every" | "equally" | "roundRobin";
   addToPipeline: boolean;
   source?: string;
 }
 
+/// A spreadsheet row with its columns renamed to enquiry fields. Values stay
+/// as raw cell text — the server coerces them, because a cell is always a
+/// string while the columns it feeds are numbers and enums.
+export type ImportRow = Partial<Record<keyof IContact, string>>;
+
 interface CheckDuplicatesRequest {
-  contacts: Partial<IContact>[];
+  contacts: ImportRow[];
 }
 
 interface CheckDuplicatesResponse {
   totalContacts: number;
   duplicateCount: number;
   newCount: number;
-  duplicates: { email: string; name: string; phone: string }[];
-  newContacts: { email: string; name: string; phone: string }[];
+  duplicates: { email: string | null; name: string | null; phone: string }[];
+  newContacts: { email: string | null; name: string | null; phone: string }[];
 }
 
 interface BulkImportContactsResponse {
@@ -284,68 +303,6 @@ interface UpdateContactStageRequest {
   stageId: string;
 }
 
-export type ContactResponseActivity =
-  | "HAD_CONVERSATION"
-  | "CALLED_NOT_PICKED"
-  | "CALLED_INVALID"
-  | "CALLED_SWITCHED_OFF"
-  | "WHATSAPP_COMMUNICATED"
-  | "ONLINE_MEETING_SCHEDULED"
-  | "OFFLINE_MEETING_SCHEDULED"
-  | "ONLINE_MEETING_CONFIRMED"
-  | "OFFLINE_MEETING_CONFIRMED"
-  | "PROPOSAL_SHARED"
-  | "PAYMENT_DONE_ADVANCE"
-  | "PAYMENT_DONE_PENDING"
-  | "FULL_PAYMENT_DONE"
-  | "PAYMENT_DONE_MONTHLY"
-  | "OTHER";
-
-export interface ContactResponseItem {
-  _id: string;
-  contact: string;
-  activity: ContactResponseActivity;
-  note?: string;
-  meetingScheduledDate?: string | null;
-  createdBy: { _id: string; name: string; email?: string } | string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface CreateContactResponseRequest {
-  contactId: string;
-  activity: ContactResponseActivity;
-  note?: string;
-  meetingScheduledDate?: string | null;
-  addToCalendar?: boolean;
-}
-
-interface UpdateContactResponseRequest {
-  contactId: string;
-  responseId: string;
-  activity: ContactResponseActivity;
-  note?: string;
-  meetingScheduledDate?: string | null;
-}
-
-interface ContactResponseMutationResponse {
-  message: string;
-  response: ContactResponseItem;
-}
-
-interface GetContactResponsesRequest {
-  contactId: string;
-  page?: number;
-  limit?: number;
-}
-
-interface ContactResponsesResponse {
-  responses: ContactResponseItem[];
-  pagination: Pagination;
-}
-
-const getContactResponseTagId = (response?: ContactResponseItem) => response?.contact || "LIST";
-
 interface GetContactActivitiesRequest {
   contactId: string;
   page?: number;
@@ -358,10 +315,11 @@ interface ContactActivitiesResponse {
 }
 
 
-// `maxRetries: 0` here means every endpoint keeps its current no-retry
-// behavior by default (the retry loop bails out before a second attempt) —
-// endpoints opt into retries individually via `extraOptions`, see
-// `retryTransientErrors` below.
+// `maxRetries: 0` means no endpoint retries by default; one can opt in
+// through `extraOptions.retryCondition`. The previous shared condition was
+// written for the call-outcome mutations and went with them — retrying only
+// network drops, timeouts and 5xx, never a 4xx, is the shape to restore if
+// an endpoint needs it again.
 const baseQueryWithRetry = retry(
   fetchBaseQuery({
     baseUrl: "/api",
@@ -370,25 +328,10 @@ const baseQueryWithRetry = retry(
   { maxRetries: 0 }
 );
 
-// Only retry network drops / timeouts / 5xx — never a 4xx (validation,
-// auth, "not found"), since retrying those just repeats the same failure.
-// Used for endpoints where losing the request matters, e.g. a sales rep's
-// logged call outcome on a flaky connection.
-const isTransientError = (error: any) => {
-  if (!error) return false;
-  if (error.status === "FETCH_ERROR" || error.status === "TIMEOUT_ERROR") return true;
-  return typeof error.status === "number" && error.status >= 500;
-};
-
-const retryTransientErrors = {
-  retryCondition: (error: any, _args: any, { attempt }: { attempt: number }) =>
-    attempt <= 3 && isTransientError(error),
-};
-
 export const contactApi = createApi({
   reducerPath: "contactApi",
   baseQuery: baseQueryWithRetry,
-  tagTypes: ["Contacts", "Tasks", "ContactResponses", "ActivityLog"],
+  tagTypes: ["Contacts", "Tasks", "ActivityLog"],
   endpoints: (builder) => ({
     createContact: builder.mutation<CreateContactApiResponse, ContactRequest>({
       query: (body) => ({
@@ -599,45 +542,6 @@ export const contactApi = createApi({
         { type: "Contacts", id: contactId || "LIST" },
       ],
     }),
-    createContactResponse: builder.mutation<ContactResponseMutationResponse, CreateContactResponseRequest>({
-      query: ({ contactId, ...body }) => ({
-        url: `/contacts/${contactId}/response`,
-        method: "POST",
-        body,
-      }),
-      extraOptions: retryTransientErrors,
-      invalidatesTags: (result, error, { contactId }) => [
-        { type: "ContactResponses", id: contactId },
-        { type: "Contacts", id: contactId },
-        { type: "ActivityLog", id: contactId },
-      ],
-    }),
-    getContactResponses: builder.query<ContactResponsesResponse, GetContactResponsesRequest>({
-      query: ({ contactId, page = 1, limit = 20 }) => ({
-        url: `/contacts/${contactId}/response?page=${page}&limit=${limit}`,
-        method: "GET",
-      }),
-      providesTags: (result, error, { contactId }) => [{ type: "ContactResponses", id: contactId }],
-    }),
-    getContactResponseById: builder.query<{ message: string; response: ContactResponseItem }, { contactId: string; responseId: string }>({
-      query: ({ contactId, responseId }) => ({
-        url: `/contacts/${contactId}/response/${responseId}`,
-        method: "GET",
-      }),
-      providesTags: (result, error, { contactId }) => [{ type: "ContactResponses", id: contactId }],
-    }),
-    updateContactResponse: builder.mutation<ContactResponseMutationResponse, UpdateContactResponseRequest>({
-      query: ({ contactId, responseId, ...body }) => ({
-        url: `/contacts/${contactId}/response/${responseId}`,
-        method: "PUT",
-        body,
-      }),
-      extraOptions: retryTransientErrors,
-      invalidatesTags: (result) => [
-        { type: "ContactResponses", id: getContactResponseTagId(result?.response) },
-        { type: "ActivityLog", id: getContactResponseTagId(result?.response) },
-      ],
-    }),
     getContactActivities: builder.query<ContactActivitiesResponse, GetContactActivitiesRequest>({
       query: ({ contactId, page = 1, limit = 5 }) => ({
         url: `/contacts/${contactId}/activities?page=${page}&limit=${limit}`,
@@ -666,9 +570,5 @@ export const {
   useGetTasksQuery,
   useUpdateTaskMutation,
   useDeleteTaskMutation,
-  useCreateContactResponseMutation,
-  useGetContactResponsesQuery,
-  useGetContactResponseByIdQuery,
-  useUpdateContactResponseMutation,
   useGetContactActivitiesQuery,
 } = contactApi;

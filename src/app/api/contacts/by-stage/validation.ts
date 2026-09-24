@@ -1,23 +1,17 @@
 import { NextRequest } from "next/server";
-import mongoose from "mongoose";
-
+import type { EnquiryFilterBody } from "@/app/lib/enquiry/buildFilterWhere";
 import {
-  ByStageActivityFilter,
   ByStageApiError,
   ByStageAssignedToFilter,
   ParsedByStageParams,
-  VALID_ACTIVITIES,
 } from "./types";
 
-const safeJsonParseArray = <T>(value: string | null, label: string): T[] => {
-  if (!value) return [];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const safeJsonParse = <T>(value: string | null, label: string, fallback: T): T => {
+  if (!value) return fallback;
   try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) {
-      throw new Error();
-    }
-    return parsed as T[];
+    return JSON.parse(value) as T;
   } catch {
     throw new ByStageApiError(`Invalid ${label} format`);
   }
@@ -32,8 +26,7 @@ export const parseAndValidateByStageParams = (req: NextRequest): ParsedByStagePa
   if (!pipelineId || !stageId) {
     throw new ByStageApiError("pipelineId and stageId are required");
   }
-
-  if (!mongoose.Types.ObjectId.isValid(pipelineId) || !mongoose.Types.ObjectId.isValid(stageId)) {
+  if (!UUID.test(pipelineId) || !UUID.test(stageId)) {
     throw new ByStageApiError("Invalid pipelineId or stageId");
   }
 
@@ -43,54 +36,52 @@ export const parseAndValidateByStageParams = (req: NextRequest): ParsedByStagePa
   if (Number.isNaN(page) || page < 1) {
     throw new ByStageApiError("Invalid page number");
   }
-
   if (Number.isNaN(limit) || limit < 1 || limit > 100) {
     throw new ByStageApiError("Invalid limit (must be 1-100)");
   }
 
-  const source = searchParams.get("source") || undefined;
-  const keyword = searchParams.get("keyword") || undefined;
-  const startDate = searchParams.get("startDate") || undefined;
-  const endDate = searchParams.get("endDate") || undefined;
+  const filter = safeJsonParse<EnquiryFilterBody>(searchParams.get("filter"), "filter", {});
 
-  if (startDate && Number.isNaN(Date.parse(startDate))) {
-    throw new ByStageApiError("Invalid startDate format");
+  // The board used to send assignedTo as its own param keyed on `_id`;
+  // fold it into the shared filter shape, which keys on `userId`.
+  const legacyAssignedTo = safeJsonParse<ByStageAssignedToFilter[]>(
+    searchParams.get("assignedTo"),
+    "assignedTo",
+    []
+  );
+  if (legacyAssignedTo.length && !filter.assignedTo?.length) {
+    for (const item of legacyAssignedTo) {
+      if (!item?._id || typeof item.isNot !== "boolean" || !UUID.test(item._id)) {
+        throw new ByStageApiError("Invalid assignedTo format");
+      }
+    }
+    filter.assignedTo = legacyAssignedTo.map((item) => ({
+      userId: item._id,
+      isNot: item.isNot,
+    }));
   }
 
-  if (endDate && Number.isNaN(Date.parse(endDate))) {
-    throw new ByStageApiError("Invalid endDate format");
-  }
+  const source = searchParams.get("source");
+  if (source && !filter.source) filter.source = source;
 
-  const assignedTo = safeJsonParseArray<ByStageAssignedToFilter>(searchParams.get("assignedTo"), "assignedTo");
-  const activities = safeJsonParseArray<ByStageActivityFilter>(searchParams.get("activities"), "activities");
-
-  for (const item of assignedTo) {
-    if (!item?._id || typeof item.isNot !== "boolean" || !mongoose.Types.ObjectId.isValid(item._id)) {
-      throw new ByStageApiError("Invalid assignedTo format");
+  const startDate = searchParams.get("startDate");
+  const endDate = searchParams.get("endDate");
+  if ((startDate || endDate) && !filter.createdAt) {
+    if (startDate && Number.isNaN(Date.parse(startDate))) {
+      throw new ByStageApiError("Invalid startDate format");
     }
-  }
-
-  for (const item of activities) {
-    if (!item?.value || typeof item.isNot !== "boolean") {
-      throw new ByStageApiError("Invalid activities format");
+    if (endDate && Number.isNaN(Date.parse(endDate))) {
+      throw new ByStageApiError("Invalid endDate format");
     }
-    if (!VALID_ACTIVITIES.includes(item.value as (typeof VALID_ACTIVITIES)[number])) {
-      throw new ByStageApiError(`Invalid activity values: ${item.value}`);
-    }
+    filter.createdAt = { startDate, endDate };
   }
 
   return {
     pipelineId,
     stageId,
-    source,
-    keyword,
-    startDate,
-    endDate,
-    assignedTo,
-    activities,
+    keyword: searchParams.get("keyword") || undefined,
     page,
     limit,
-    pipelineObjectId: new mongoose.Types.ObjectId(pipelineId),
-    stageObjectId: new mongoose.Types.ObjectId(stageId),
+    filter,
   };
 };

@@ -2,7 +2,6 @@
 import React from "react";
 import PhoneIcon from "@/components/ui/flowbiteIcons/Phone";
 import EmailIcon from "@/components/ui/flowbiteIcons/Email";
-import InvoiceIcon from "../ui/flowbiteIcons/InvoiceIcon";
 import TaskIcon from "../ui/flowbiteIcons/TaskIcon";
 import RedirectIcon from "@/components/ui/flowbiteIcons/Redirect";
 
@@ -65,14 +64,6 @@ function ContactDragOverlay({ contact }: ContactDragOverlayProps) {
             aria-label="Tasks (disabled)"
           >
             <TaskIcon className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            disabled
-            className="inline-flex items-center border-l px-1.5 py-1 text-sm font-medium text-gray-900 bg-transparent border-t border-b border-gray-900 dark:border-white dark:text-white opacity-75"
-            aria-label="Generate proposal (disabled)"
-          >
-            <InvoiceIcon className="w-4 h-4" />
           </button>
           <span
             className="inline-flex items-center px-1.5 py-1 text-sm font-medium text-gray-900 bg-transparent border border-gray-900 rounded-e-lg dark:border-white dark:text-white opacity-75"

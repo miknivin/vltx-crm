@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation";
 import ContactsMetrics from "@/components/ecommerce/ContactsMetrics";
 // import MonthlySalesChart from "@/components/ecommerce/MonthlySalesChart";
 import MonthlyTarget from "@/components/ecommerce/MonthlyTarget";
-import Calendar from "@/components/calendar/Calendar";
 import ContactTableTwo from "@/components/tables/ContactTableTwo";
 import UsersTableTwo from "@/components/tables/UsersTableTwo";
 import ShortSpinnerPrimary from "@/components/ui/loaders/ShortSpinnerPrimary";
-import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { useGetDashboardDataQuery } from "../redux/api/dashboardApi";
 import { RootState } from "@/app/redux/rootReducer";
 
@@ -25,19 +23,9 @@ export default function Page() {
 
   useEffect(() => {
     if (user?.role === "user") {
-      router.push("/calendar");
+      router.push("/settings");
     }
   }, [user, router]);
-
-  // Conditionally render for user role
-  if (user?.role === "user") {
-    return (
-      <div>
-        <PageBreadcrumb pageTitle="Calendar" />
-        <Calendar />
-      </div>
-    );
-  }
 
   // Handle error state
   if (error || (!data?.success && !isLoading)) {

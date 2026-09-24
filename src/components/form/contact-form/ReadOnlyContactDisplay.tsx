@@ -5,7 +5,6 @@ import {
   ResponseContact,
   TaskItem,
   TaskStatus,
-  useGetContactResponsesQuery,
   useGetTasksQuery,
   useUpdateTaskMutation,
 } from '@/app/redux/api/contactApi';
@@ -15,10 +14,9 @@ import CardSwiper from '@/components/ui/swiper/CardSwiper';
 import { Modal } from '@/components/ui/modal';
 import TaskTabs from '@/components/pipeline/TaskTabs';
 import TaskCard from '@/components/pipeline/TaskCard';
-import ContactResponseTabs from '@/components/pipeline/ContactResponseTabs';
-import ContactResponseCard from '@/components/pipeline/ContactResponseCard';
 import Button from '@/components/ui/button/Button';
 import { toast } from 'react-toastify';
+import EnquiryPhotoGallery from '@/components/contact/EnquiryPhotoGallery';
 
 interface ReadOnlyContactDisplayProps {
   contact: ResponseContact;
@@ -29,11 +27,11 @@ interface ContactData {
   email: string;
   phone: string;
   notes?: string;
-  businessName?: string;
+  city?: string;
   source?: string;
-  preferredVisitingTime?: string;
-  numberOfPeople?: string;
-  preferredNightsAndDays?: string;
+  category?: string;
+  brand?: string;
+  estimatedValue?: string;
 }
 
 const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact }) => {
@@ -42,32 +40,30 @@ const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact
     email: '',
     phone: '',
     notes: '',
-    businessName: '',
+    city: '',
     source: '',
-    preferredVisitingTime: '',
-    numberOfPeople: '',
-    preferredNightsAndDays: '',
+    category: '',
+    brand: '',
+    estimatedValue: '',
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isResponseModalOpen, setIsResponseModalOpen] = useState(false);
   const [updateTask, { isLoading: isTaskUpdating }] = useUpdateTaskMutation();
 
   const { data: tasksData, isLoading: isTasksLoading, error: tasksError } = useGetTasksQuery({ contactId: contact._id });
-  const { data: responsesData, isLoading: isResponsesLoading, error: responsesError } = useGetContactResponsesQuery({ contactId: contact._id, limit: 4 });
 
   // Pre-populate contact data
   useEffect(() => {
     if (contact) {
       setContactData({
         name: contact.name,
-        email: contact.email,
+        email: contact.email || '',
         phone: contact.phone,
         notes: contact.notes || '',
-        businessName: contact.businessName || '',
+        city: contact.city || '',
         source: contact.source || '',
-        preferredVisitingTime: contact.preferredVisitingTime || '',
-        numberOfPeople: contact.numberOfPeople !== undefined && contact.numberOfPeople !== null ? String(contact.numberOfPeople) : '',
-        preferredNightsAndDays: contact.preferredNightsAndDays || '',
+        category: contact.categoryLabel || '',
+        brand: contact.brand || '',
+        estimatedValue: contact.estimatedValue !== null && contact.estimatedValue !== undefined ? String(contact.estimatedValue) : '',
       });
     }
   }, [contact]);
@@ -78,14 +74,6 @@ const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact
 
   const closeModal = () => {
     setIsModalOpen(false);
-  };
-
-  const openResponseModal = () => {
-    setIsResponseModalOpen(true);
-  };
-
-  const closeResponseModal = () => {
-    setIsResponseModalOpen(false);
   };
 
   const handleTaskStatusChange = async (task: TaskItem, status: TaskStatus) => {
@@ -143,17 +131,11 @@ const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact
         </div>
       </div>
       <div>
-        <label
-          htmlFor="businessName"
-          className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-        >
-          Business Name
+        <label htmlFor="city" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+          City
         </label>
-        <div
-          id="businessName"
-          className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-        >
-          {contactData.businessName || 'N/A'}
+        <div id="city" className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
+          {contactData.city || 'N/A'}
         </div>
       </div>
       <div>
@@ -172,45 +154,27 @@ const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div>
-          <label
-            htmlFor="preferredVisitingTime"
-            className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-          >
-            Preferred Visiting Time
+          <label htmlFor="category" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+            Asset Category
           </label>
-          <div
-            id="preferredVisitingTime"
-            className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-          >
-            {contactData.preferredVisitingTime || 'N/A'}
+          <div id="category" className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
+            {contactData.category || 'N/A'}
           </div>
         </div>
         <div>
-          <label
-            htmlFor="numberOfPeople"
-            className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-          >
-            Number Of People
+          <label htmlFor="brand" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+            Brand / Maker
           </label>
-          <div
-            id="numberOfPeople"
-            className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-          >
-            {contactData.numberOfPeople || 'N/A'}
+          <div id="brand" className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
+            {contactData.brand || 'N/A'}
           </div>
         </div>
         <div>
-          <label
-            htmlFor="preferredNightsAndDays"
-            className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-          >
-            Preferred Nights &amp; Days
+          <label htmlFor="estimatedValue" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+            Estimated Value (₹)
           </label>
-          <div
-            id="preferredNightsAndDays"
-            className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-          >
-            {contactData.preferredNightsAndDays || 'N/A'}
+          <div id="estimatedValue" className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
+            {contactData.estimatedValue || 'Not yet valued'}
           </div>
         </div>
       </div>
@@ -227,6 +191,9 @@ const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact
         >
           {contactData.notes || 'N/A'}
         </div>
+      </div>
+      <div className="mt-6">
+        <EnquiryPhotoGallery photos={contact.photos ?? []} />
       </div>
       <div className="mt-6">
         <div className="flex justify-between items-center mb-4">
@@ -267,45 +234,9 @@ const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact
         )}
       </div>
 
-      <div className="mt-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-start text-gray-900 dark:text-white">
-            Call Responses
-          </h2>
-          <Button
-            variant="primary"
-            onClick={openResponseModal}
-          >
-            Add Response
-          </Button>
-        </div>
-        {isResponsesLoading ? (
-          <div className="flex justify-center">
-            <VeryShortSpinnerPrimary />
-          </div>
-        ) : responsesError ? (
-          <p className="text-red-500 text-sm">
-            Failed to load call responses: {(responsesError as any)?.data?.error || 'Unknown error'}
-          </p>
-        ) : responsesData?.responses && responsesData.responses.length > 0 ? (
-          <CardSwiper
-            items={responsesData.responses}
-            getKey={(response) => response._id}
-            renderItem={(response) => <ContactResponseCard response={response} />}
-          />
-        ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No call responses logged for this contact.
-          </p>
-        )}
-      </div>
-
     </div>
     <Modal isOpen={isModalOpen} onClose={closeModal} className="max-w-[700px] p-6 lg:p-10">
         <TaskTabs contact={contact} onClose={closeModal} />
-      </Modal>
-    <Modal isOpen={isResponseModalOpen} onClose={closeResponseModal} className="max-w-[700px] p-6 lg:p-10">
-        <ContactResponseTabs contact={contact} onClose={closeResponseModal} />
       </Modal>
     </>
   );

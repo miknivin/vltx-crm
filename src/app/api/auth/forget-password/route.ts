@@ -1,22 +1,22 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server";
 import { NextRequest, NextResponse } from "next/server";
-import User from "@/app/models/User";
-import dbConnect from "@/app/lib/db/connection";
+import prisma from "@/app/lib/db/prisma";
+import { createResetPasswordToken } from "@/app/lib/auth/password";
 import { sendPasswordResetEmail } from "../../utils/sendResetPasswordEmail";
-export async function POST(req:NextRequest) {
+
+export async function POST(req: NextRequest) {
   try {
-    await dbConnect();
     const { email } = await req.json();
 
     if (!email) {
-      return NextResponse.json(
-        { error: "Email is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Email is required" }, { status: 400 });
     }
 
-    const user = await User.findOne({ email });
+    const user = await prisma.user.findUnique({
+      where: { email: String(email).toLowerCase() },
+      select: { id: true },
+    });
+
     if (!user) {
       return NextResponse.json(
         { error: "User not found with this email" },
@@ -24,17 +24,21 @@ export async function POST(req:NextRequest) {
       );
     }
 
-    const resetToken = user.getResetPasswordToken();
-    await user.save();
-    await sendPasswordResetEmail(email, resetToken);
-    return NextResponse.json({
-      success: true,
-      resetToken,
+    const { resetToken, resetPasswordToken, resetPasswordExpire } =
+      createResetPasswordToken();
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetPasswordToken, resetPasswordExpire },
     });
-  } catch (error:any) {
+
+    await sendPasswordResetEmail(email, resetToken);
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
     console.error("Error in forgot password:", error);
     return NextResponse.json(
-      { error: error.message, details: error.stack },
+      { error: "Could not start a password reset" },
       { status: 500 }
     );
   }

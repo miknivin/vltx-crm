@@ -5,18 +5,16 @@ import Button from "@/components/ui/button/Button";
 import Chip from "@/components/ui/chips/Chip";
 import ShortSpinnerDark from "@/components/ui/loaders/ShortSpinnerDark";
 import { useState } from "react";
-import { useSelector } from "react-redux";
-import { RootState } from '@/app/redux/rootReducer';
 import { toast } from "react-toastify";
 import { useGetPipelineByIdQuery } from "@/app/redux/api/pipelineApi";
 import SourceAutocomplete from "./SourceAutocomplete";
+import { CATEGORY_OPTIONS } from "@/app/lib/enquiry/constants";
 
 interface AddContactFormProps {
   onClose: () => void;
 }
 
 export default function AddContactForm({ onClose }: AddContactFormProps) {
-  const { user } = useSelector((state: RootState) => state.user);
   const { data: pipelineData } = useGetPipelineByIdQuery(
     process.env.NEXT_PUBLIC_DEFAULT_PIPELINE || ""
   );
@@ -29,14 +27,13 @@ export default function AddContactForm({ onClose }: AddContactFormProps) {
     email: "",
     phone: "",
     notes: "",
-    userId: user ? user._id : "",
-    businessName: "",
+    city: "",
     stage: defaultStage,
     tags: [] as string[],
     source: "",
-    preferredVisitingTime: "",
-    numberOfPeople: "",
-    preferredNightsAndDays: "",
+    category: "",
+    brand: "",
+    description: "",
   });
   const [tagInput, setTagInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -70,24 +67,16 @@ export default function AddContactForm({ onClose }: AddContactFormProps) {
     }));
   };
 
-  const generateRandomEmail = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let randomStr = '';
-    for (let i = 0; i < 12; i++) {
-      randomStr += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return `contact-${randomStr}@example.com`;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     try {
-      const emailToSubmit = formData.email.trim() || generateRandomEmail();
       const response = await createContact({
         ...formData,
-        email: emailToSubmit,
-        userId: formData.userId || "",
+        mobile: formData.phone,
+        // The valuation form does not require an email, so an omitted one is
+        // sent as absent rather than as a fabricated placeholder.
+        email: formData.email.trim() || undefined,
       }).unwrap();
       console.log("Contact created:", response.contact);
       setFormData({
@@ -95,14 +84,13 @@ export default function AddContactForm({ onClose }: AddContactFormProps) {
         email: "",
         phone: "",
         notes: "",
-        userId: formData.userId,
-        businessName: "",
+        city: "",
         stage: stages.length > 0 ? stages[0]._id : "",
         tags: [],
         source: "",
-        preferredVisitingTime: "",
-        numberOfPeople: "",
-        preferredNightsAndDays: "",
+        category: "",
+        brand: "",
+        description: "",
       });
       setTagInput("");
       onClose();
@@ -173,17 +161,14 @@ export default function AddContactForm({ onClose }: AddContactFormProps) {
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label
-              htmlFor="businessName"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400"
-            >
-              Business Name
+            <label htmlFor="city" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              City
             </label>
             <input
               type="text"
-              id="businessName"
-              name="businessName"
-              value={formData.businessName}
+              id="city"
+              name="city"
+              value={formData.city}
               onChange={handleInputChange}
               className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
             />
@@ -220,53 +205,49 @@ export default function AddContactForm({ onClose }: AddContactFormProps) {
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label
-              htmlFor="preferredVisitingTime"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400"
+            <label htmlFor="category" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              Asset Category
+            </label>
+            <select
+              id="category"
+              name="category"
+              value={formData.category}
+              onChange={handleInputChange}
+              required
+              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
             >
-              Preferred Visiting Time
+              <option value="">Select a category</option>
+              {CATEGORY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="brand" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              Brand / Maker
             </label>
             <input
               type="text"
-              id="preferredVisitingTime"
-              name="preferredVisitingTime"
-              value={formData.preferredVisitingTime}
+              id="brand"
+              name="brand"
+              value={formData.brand}
               onChange={handleInputChange}
-              placeholder="e.g. within 2-3 months"
+              placeholder="e.g. Rolex"
               className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
             />
           </div>
           <div>
-            <label
-              htmlFor="numberOfPeople"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400"
-            >
-              Number Of People
-            </label>
-            <input
-              type="number"
-              id="numberOfPeople"
-              name="numberOfPeople"
-              min="0"
-              value={formData.numberOfPeople}
-              onChange={handleInputChange}
-              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="preferredNightsAndDays"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400"
-            >
-              Preferred Nights &amp; Days
+            <label htmlFor="description" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              Short Description
             </label>
             <input
               type="text"
-              id="preferredNightsAndDays"
-              name="preferredNightsAndDays"
-              value={formData.preferredNightsAndDays}
+              id="description"
+              name="description"
+              value={formData.description}
               onChange={handleInputChange}
-              placeholder="e.g. 5n/6d"
               className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
             />
           </div>

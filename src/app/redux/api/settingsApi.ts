@@ -2,21 +2,13 @@ import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
 export interface ICompanySettings {
   companyName: string;
+  legalName?: string;
   logo?: { public_id: string; url: string };
   address?: string;
   email?: string;
   phone?: string;
   website?: string;
   taxId?: string;
-  bankDetails?: {
-    accountName?: string;
-    accountNumber?: string;
-    ifsc?: string;
-    bankName?: string;
-    upiId?: string;
-  };
-  invoicePrefix: string;
-  invoiceNotes?: string;
 }
 
 type UpdateCompanySettingsRequest = Partial<ICompanySettings>;

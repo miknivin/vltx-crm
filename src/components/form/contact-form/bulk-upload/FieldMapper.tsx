@@ -1,7 +1,7 @@
 
 "use client";
 
-import { IContact } from "@/app/models/Contact";
+import type { IContact } from "@/app/types/enquiry";
 import Button from "@/components/ui/button/Button";
 import VeryShortSpinnerPrimary from "@/components/ui/loaders/veryShortSpinnerPrimary";
 
@@ -17,25 +17,40 @@ interface FieldMapperProps {
   error: string | null;
 }
 
+/// Spreadsheet columns a bulk import can map onto an enquiry. The previous
+/// client's ad-lead fields (visiting time, number of people, nights & days)
+/// are gone; these are the asset columns the valuation form collects.
 const contactFields: (keyof IContact)[] = [
   "name",
-  "email",
   "phone",
+  "email",
+  "city",
+  "category",
+  "jewelleryType",
+  "brand",
+  "metalWeightG",
+  "caratWeight",
+  "shapeCut",
+  "condition",
+  "certificateAvailable",
+  "certificateLab",
+  "purchaseYear",
+  "description",
   "notes",
-  "businessName",
   "source",
-  "probability",
-  "value",
   "tags",
-  "preferredVisitingTime",
-  "numberOfPeople",
-  "preferredNightsAndDays",
 ];
 
 const fieldLabels: Partial<Record<keyof IContact, string>> = {
-  preferredVisitingTime: "Preferred Visiting Time",
-  numberOfPeople: "Number Of People",
-  preferredNightsAndDays: "Preferred Nights & Days",
+  phone: "Mobile",
+  category: "Asset Category",
+  jewelleryType: "Jewellery Type",
+  metalWeightG: "Metal Weight (g)",
+  caratWeight: "Weight / Carat",
+  shapeCut: "Shape / Cut",
+  certificateAvailable: "Certificate Available",
+  certificateLab: "Certifying Lab",
+  purchaseYear: "Purchase Year",
 };
 
 export default function FieldMapper({

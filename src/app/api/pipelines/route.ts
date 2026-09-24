@@ -1,51 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/db/connection';
-import { validatePipelineCreate } from '../middlewares/validatePipelineCreate';
-import Pipeline from '@/app/models/Pipeline';
-import Stage from '@/app/models/Stage';
-import { PipelineQueryParams, validatePipelineQueryParams } from '../middlewares/validatePipelineQueryParams';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import User from "@/app/models/User"; // Import the User model
-import { authorizeRoles, isAuthenticatedUser } from '../middlewares/auth';
-//import mongoose from 'mongoose';
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
+import { authorizeRoles, isAuthenticatedUser } from "../middlewares/auth";
+import { validatePipelineCreate } from "../middlewares/validatePipelineCreate";
+import { validatePipelineQueryParams, PipelineQueryParams } from "../middlewares/validatePipelineQueryParams";
+import { serializePipeline } from "@/app/lib/enquiry/serializePipeline";
 
-
-interface PipelineQueryFilter {
-  name?: { $regex: string; $options: string };
-  created_at?: { $gte?: Date; $lte?: Date };
-}
-
-
-interface LeanPipeline {
-  _id: string;
-  name: string;
-  notes?: string | null;
-  user: { name: string; email: string };
-  created_at: Date;
-  updated_at: Date;
-  __v: number;
-}
-
-
-interface PipelineResponse {
-  pipelines: LeanPipeline[];
-  total: number;
-  page: number;
-  totalPages: number;
-  limit: number;
-}
-
-export async function POST(req:NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-     const user = await isAuthenticatedUser(req);
-    if (!user) {
-        return NextResponse.json(
-            { success: false, message: "Need to login" },
-            { status: 400 }
-        );
-    }
+    const user = await isAuthenticatedUser(req);
     authorizeRoles(user, "admin");
-    await dbConnect();
 
     const { name, notes, userId, stages } = await req.json();
 
@@ -54,120 +18,106 @@ export async function POST(req:NextRequest) {
       return NextResponse.json({ error: validationResult.error }, { status: 400 });
     }
 
-    const pipeline = await Pipeline.create({
-      name: name.trim(),
-      notes: notes?.trim() || undefined,
-      user: userId,
+    const pipeline = await prisma.pipeline.create({
+      data: {
+        name: name.trim(),
+        notes: notes?.trim() || null,
+        userId: userId ?? user.id,
+        ...(stages?.length && {
+          stages: {
+            create: stages.map(
+              (stage: {
+                name: string;
+                order: number;
+                probability: number;
+                isSuccess?: boolean;
+              }) => ({
+                name: stage.name.trim(),
+                order: stage.order,
+                probability: stage.probability,
+                isSuccess: Boolean(stage.isSuccess),
+              })
+            ),
+          },
+        }),
+      },
+      include: { stages: true, user: { select: { id: true, name: true, email: true } } },
     });
 
-    // Create stages if provided
-    if (stages && stages.length > 0) {
-      const stageDocs = stages.map((stage: { name: string; order: number; probability: number; isSuccess?: boolean }) => ({
-        pipeline_id: pipeline._id,
-        name: stage.name.trim(),
-        order: stage.order,
-        probability: stage.probability,
-        isSuccess: Boolean(stage.isSuccess),
-      }));
-      await Stage.insertMany(stageDocs);
-    }
-
-    return NextResponse.json({ pipeline }, { status: 201 });
+    return NextResponse.json({ pipeline: serializePipeline(pipeline) }, { status: 201 });
   } catch (error: unknown) {
-    console.error('Error creating pipeline:', error);
-    if (error instanceof Error) {
-      if ('code' in error && error.code === 11000) {
-        return NextResponse.json({ error: 'Pipeline name already exists' }, { status: 400 });
-      }
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "Pipeline name already exists" }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Failed to create pipeline' }, { status: 500 });
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("login") || message.includes("Not allowed")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    console.error("Error creating pipeline:", error);
+    return NextResponse.json({ error: "Failed to create pipeline" }, { status: 500 });
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
     const user = await isAuthenticatedUser(request);
-    if (!user) {
-        return NextResponse.json(
-            { success: false, message: "Need to login" },
-            { status: 400 }
-        );
-    }
     try {
-        authorizeRoles(user, "admin");
-      } catch (error) {
-        console.log(error);
-
-        try {
-          authorizeRoles(user, "team_member");
-        } catch (error) {
-          console.log(error);
-           return NextResponse.json(
+      authorizeRoles(user, "admin", "team_member");
+    } catch {
+      return NextResponse.json(
         { error: "User is neither admin or team member" },
         { status: 401 }
       );
-        }
-      }
-    await dbConnect();
-   // mongoose.model("User");
+    }
+
     const { searchParams } = new URL(request.url);
     const rawParams: PipelineQueryParams = {
-      page: searchParams.get('page') || "1",
-      limit: searchParams.get('limit') || "10",
-      search: searchParams.get('search') || "",
-      createdFrom: searchParams.get('createdFrom') || "",
-      createdTo: searchParams.get('createdTo') || "",
+      page: searchParams.get("page") || "1",
+      limit: searchParams.get("limit") || "10",
+      search: searchParams.get("search") || "",
+      createdFrom: searchParams.get("createdFrom") || "",
+      createdTo: searchParams.get("createdTo") || "",
     };
 
-    const { page, limit, search, createdFrom, createdTo } = validatePipelineQueryParams(rawParams);
+    const { page, limit, search, createdFrom, createdTo } =
+      validatePipelineQueryParams(rawParams);
 
-    const skip = (page - 1) * limit;
-
-    const query: PipelineQueryFilter = {};
-
-    if (search) {
-      query.name = { $regex: search, $options: 'i' };
-    }
-
+    const where: Prisma.PipelineWhereInput = {};
+    if (search) where.name = { contains: search, mode: "insensitive" };
     if (createdFrom || createdTo) {
-      query.created_at = {};
-      if (createdFrom) {
-        query.created_at.$gte = createdFrom;
-      }
-      if (createdTo) {
-        query.created_at.$lte = createdTo;
-      }
+      where.createdAt = {
+        ...(createdFrom && { gte: createdFrom }),
+        ...(createdTo && { lte: createdTo }),
+      };
     }
 
-    // Execute queries
     const [pipelines, total] = await Promise.all([
-      Pipeline.find(query)
-        .populate('user', 'name email')
-        .skip(skip)
-        .limit(limit)
-        .sort({ created_at: -1 })
-        .lean() as unknown as Promise<LeanPipeline[]>, 
-      Pipeline.countDocuments(query),
+      prisma.pipeline.findMany({
+        where,
+        include: { user: { select: { id: true, name: true, email: true } } },
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.pipeline.count({ where }),
     ]);
 
-
-    const response: PipelineResponse = {
-      pipelines,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(
+      {
+        pipelines: pipelines.map(serializePipeline),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      { status: 200 }
+    );
   } catch (error: unknown) {
-    console.error('Error fetching pipelines:', error);
-    if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("login") || message.includes("Not allowed")) {
+      return NextResponse.json({ error: message }, { status: 401 });
     }
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error("Error fetching pipelines:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
-

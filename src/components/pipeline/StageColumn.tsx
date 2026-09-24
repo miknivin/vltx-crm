@@ -11,12 +11,9 @@ import {
 import ShortSpinnerPrimary from "@/components/ui/loaders/ShortSpinnerPrimary";
 import { Modal } from "@/components/ui/modal";
 import QRCodeModalContent from "@/components/qr-code/QRCodeModalContent";
-import GenerateProposalForm from "@/components/form/proposal-form/GenerateProposalForm";
-import CreateInvoiceForm from "@/components/form/invoice-form/CreateInvoiceForm";
 
 import SortableContact from "./SortableContact";
 import SortableStage from "./SortableStage";
-import ContactResponseTabs from "./ContactResponseTabs";
 import { useBoardActions, useStageView } from "./board/PipelineBoardProvider";
 import { Contact, Stage } from "./types";
 
@@ -42,10 +39,7 @@ const normalizeContact = (contact: Contact): Contact => ({
 interface ContactListProps {
   contacts: Contact[];
   sortableData: { stageId: string };
-  onOpenProposal: (contact: Contact) => void;
-  onOpenInvoice: (contact: Contact) => void;
   onOpenQR: (contact: Contact) => void;
-  onOpenResponse: (contact: Contact) => void;
 }
 
 // Always virtualized, regardless of how many contacts this one column has
@@ -62,10 +56,7 @@ interface VirtualizedContactListProps extends ContactListProps {
 const VirtualizedContactList = memo(function VirtualizedContactList({
   contacts,
   sortableData,
-  onOpenProposal,
-  onOpenInvoice,
   onOpenQR,
-  onOpenResponse,
   scrollElementRef,
 }: VirtualizedContactListProps) {
   const virtualizer = useVirtualizer({
@@ -111,10 +102,7 @@ const VirtualizedContactList = memo(function VirtualizedContactList({
               <SortableContact
                 contact={contact}
                 data={sortableData}
-                onOpenProposal={onOpenProposal}
-                onOpenInvoice={onOpenInvoice}
                 onOpenQR={onOpenQR}
-                onOpenResponse={onOpenResponse}
               />
             </div>
           );
@@ -127,10 +115,7 @@ const VirtualizedContactList = memo(function VirtualizedContactList({
 function StageColumnComponent({ stage, pipelineId, filters }: StageColumnProps) {
   const { contacts, meta } = useStageView(stage._id);
   const { hydrateStage, requestNextPage } = useBoardActions();
-  const [proposalContact, setProposalContact] = useState<Contact | null>(null);
-  const [invoiceContact, setInvoiceContact] = useState<Contact | null>(null);
   const [qrContact, setQrContact] = useState<Contact | null>(null);
-  const [responseContact, setResponseContact] = useState<Contact | null>(null);
 
   const limit = 10;
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -202,10 +187,7 @@ function StageColumnComponent({ stage, pipelineId, filters }: StageColumnProps) 
         <VirtualizedContactList
           contacts={contacts}
           sortableData={sortableData}
-          onOpenProposal={setProposalContact}
-          onOpenInvoice={setInvoiceContact}
           onOpenQR={setQrContact}
-          onOpenResponse={setResponseContact}
           scrollElementRef={scrollContainerRef}
         />
       )}
@@ -217,25 +199,6 @@ function StageColumnComponent({ stage, pipelineId, filters }: StageColumnProps) 
 
       <Modal isOpen={!!qrContact} onClose={() => setQrContact(null)} className="max-w-[400px] p-6">
         {qrContact && <QRCodeModalContent contact={qrContact} onClose={() => setQrContact(null)} />}
-      </Modal>
-      <Modal isOpen={!!responseContact} onClose={() => setResponseContact(null)} className="max-w-[600px] p-6">
-        {responseContact && <ContactResponseTabs contact={responseContact} onClose={() => setResponseContact(null)} />}
-      </Modal>
-      <Modal isOpen={!!proposalContact} onClose={() => setProposalContact(null)} className="max-w-[700px] p-6 lg:p-10">
-        {proposalContact && (
-          <GenerateProposalForm
-            contact={{ _id: proposalContact._id, name: proposalContact.name || "Client" }}
-            onClose={() => setProposalContact(null)}
-          />
-        )}
-      </Modal>
-      <Modal isOpen={!!invoiceContact} onClose={() => setInvoiceContact(null)} className="max-w-[900px] p-6 lg:p-10">
-        {invoiceContact && (
-          <CreateInvoiceForm
-            contact={{ _id: invoiceContact._id, name: invoiceContact.name || "Client" }}
-            onClose={() => setInvoiceContact(null)}
-          />
-        )}
       </Modal>
     </SortableStage>
   );

@@ -16,12 +16,12 @@ export default function ProfileSettingsForm() {
 
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
-  const [avatar, setAvatar] = useState(user?.avatar);
+  const [avatar, setAvatar] = useState(user?.avatar ?? undefined);
 
   useEffect(() => {
     setName(user?.name || "");
     setPhone(user?.phone || "");
-    setAvatar(user?.avatar);
+    setAvatar(user?.avatar ?? undefined);
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {

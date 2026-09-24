@@ -1,40 +1,36 @@
-import { IUser } from "@/app/models/User";
 import { NextResponse } from "next/server";
+import {
+  AUTH_COOKIE,
+  SESSION_MAX_AGE_SECONDS,
+  authCookieOptions,
+  signJwtToken,
+} from "@/app/lib/auth/token";
 
-// Define the response interface
+interface TokenUser {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
 interface TokenResponse {
   success: boolean;
   token: string;
   user: {
-    id?: string; // Made optional to match IUser's _id
-    name?: string;
+    id: string;
+    name: string | null;
     email: string;
   };
 }
 
-const sendToken = (user: IUser, statusCode: number): NextResponse<TokenResponse> => {
-  const token = user.getJwtToken();
+const sendToken = (user: TokenUser, statusCode: number): NextResponse<TokenResponse> => {
+  const token = signJwtToken(user.id);
 
-  // Set cookie options without sameSite
-  const cookieOptions: {
-    httpOnly: boolean;
-    secure: boolean;
-    maxAge: number;
-    path: string;
-  } = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: (Number(process.env.COOKIE_EXPIRES_TIME) || 7) * 24 * 60 * 60,
-    path: "/",
-  };
-
-  // Create the response
   const response = NextResponse.json(
     {
       success: true,
       token,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         email: user.email,
       },
@@ -42,8 +38,7 @@ const sendToken = (user: IUser, statusCode: number): NextResponse<TokenResponse>
     { status: statusCode }
   );
 
-  // Set the cookie in the response headers
-  response.cookies.set("token", token, cookieOptions);
+  response.cookies.set(AUTH_COOKIE, token, authCookieOptions(SESSION_MAX_AGE_SECONDS));
 
   return response;
 };

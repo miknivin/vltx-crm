@@ -1,6 +1,6 @@
 
 "use client";
-import { IUser } from "@/app/models/User";
+import type { IUser } from "@/app/types/user";
 import { useGetTeamMembersQuery } from "@/app/redux/api/userApi";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Chip from "../chips/Chip";
@@ -9,7 +9,11 @@ import { useSelector } from "react-redux";
 import { RootState } from "@/app/redux/rootReducer";
 import DateRangePickerUi from "../date/DateRangePicker";
 import { format } from "date-fns";
-import ActivityFilter from "@/components/form/contactFilter/elements/ActivityFilter";
+import AssetFilters, {
+  EMPTY_ASSET_FILTERS,
+  toFilterPayload,
+  type AssetFilterState,
+} from "@/components/form/contactFilter/elements/AssetFilters";
 import SourceFilter from "@/components/form/contactFilter/elements/SourceFilter";
 
 interface OffCanvasProps {
@@ -38,10 +42,9 @@ export default function PipelineOffCanvas({ isOpen, onClose }: OffCanvasProps) {
   const [startDate, setStartDate] = useState<string | null>(null);
   const [endDate, setEndDate] = useState<string | null>(null);
 
-  // New: Activity filter state
-  const [selectedActivities, setSelectedActivities] = useState<
-    { value: string; isNot: boolean }[]
-  >([]);
+  // Valuation filters, shared with the enquiry list's drawer so the same
+  // choices mean the same thing on the board.
+  const [assetFilters, setAssetFilters] = useState<AssetFilterState>(EMPTY_ASSET_FILTERS);
 
   const { data: teamMembersData, isLoading } = useGetTeamMembersQuery({
     page: 1,
@@ -74,19 +77,24 @@ export default function PipelineOffCanvas({ isOpen, onClose }: OffCanvasProps) {
       setSelectedUsers([]);
     }
 
-    // Sync activities from URL
-    const activities = searchParams.get("activities");
-    if (activities) {
+    // Rehydrate the asset filters from the URL, so reopening the drawer on a
+    // shared or bookmarked board view shows what is actually applied.
+    const filterParam = searchParams.get("filter");
+    if (filterParam) {
       try {
-        const parsedActivities = JSON.parse(activities);
-        if (Array.isArray(parsedActivities)) {
-          setSelectedActivities(parsedActivities);
-        }
+        const parsed = JSON.parse(filterParam);
+        setAssetFilters({
+          ...EMPTY_ASSET_FILTERS,
+          ...Object.fromEntries(
+            Object.entries(parsed).filter(([key]) => key in EMPTY_ASSET_FILTERS)
+          ),
+        } as AssetFilterState);
       } catch (error) {
-        console.error("Failed to parse activities:", error);
+        console.error("Failed to parse filter:", error);
+        setAssetFilters(EMPTY_ASSET_FILTERS);
       }
     } else {
-      setSelectedActivities([]);
+      setAssetFilters(EMPTY_ASSET_FILTERS);
     }
   }, [searchParams]);
 
@@ -183,11 +191,13 @@ export default function PipelineOffCanvas({ isOpen, onClose }: OffCanvasProps) {
       params.delete("endDate");
     }
 
-    // Add activities param
-    if (selectedActivities.length > 0) {
-      params.set("activities", JSON.stringify(selectedActivities));
+    // The board reads these from one `filter` param, the same shape the
+    // enquiry list sends in its request body.
+    const assetPayload = toFilterPayload(assetFilters);
+    if (Object.keys(assetPayload).length > 0) {
+      params.set("filter", JSON.stringify(assetPayload));
     } else {
-      params.delete("activities");
+      params.delete("filter");
     }
 
     router.push(`?${params.toString()}`);
@@ -198,7 +208,7 @@ export default function PipelineOffCanvas({ isOpen, onClose }: OffCanvasProps) {
     setKeyword("");
     setSource("");
     setSelectedUsers([]);
-    setSelectedActivities([]); // ← Clear activities
+    setAssetFilters(EMPTY_ASSET_FILTERS);
     setIsNotFilter(false);
     setKeywordError(null);
     setStartDate(null);
@@ -210,7 +220,7 @@ export default function PipelineOffCanvas({ isOpen, onClose }: OffCanvasProps) {
     params.delete("assignedTo");
     params.delete("startDate");
     params.delete("endDate");
-    params.delete("activities"); // ← Remove activities param
+    params.delete("filter");
 
     router.push(`?${params.toString()}`);
   };
@@ -301,13 +311,8 @@ export default function PipelineOffCanvas({ isOpen, onClose }: OffCanvasProps) {
             />
           </div>
 
-          {/* NEW: Activity Filter */}
           <div className="mb-4">
-            <ActivityFilter
-              selectedActivities={selectedActivities}
-              onSelectedActivitiesChange={setSelectedActivities}
-              disabled={false}
-            />
+            <AssetFilters value={assetFilters} onChange={setAssetFilters} />
           </div>
 
           {/* Admin: User Assignment */}

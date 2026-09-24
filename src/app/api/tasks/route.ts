@@ -1,31 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
-import mongoose, { Types } from "mongoose";
-
+import type { Prisma, TaskPriority, TaskStatus, TaskType } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
 import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
-import { logContactActivity } from "@/app/api/utils/activityLog";
-import dbConnect from "@/app/lib/db/connection";
-import CalendarEvent from "@/app/models/CalendarEvents";
-import Contact from "@/app/models/Contact";
-import Task, { TaskPriority, TaskStatus, TaskType } from "@/app/models/Task";
-import "@/app/models/User"; // Registers "User" — required by the populate() calls below
+import { serializeTask, TASK_INCLUDE } from "@/app/lib/enquiry/serializeTask";
 
 const allowedPriorities: TaskPriority[] = ["low", "medium", "high"];
 const allowedStatuses: TaskStatus[] = ["open", "in_progress", "done"];
 const allowedTypes: TaskType[] = ["contact_linked", "custom"];
 
-const parseAssignedTo = (value: unknown) => {
-  if (value === undefined || value === null || value === "") return [] as Types.ObjectId[];
+const parseAssignedTo = (value: unknown): string[] => {
+  if (value === undefined || value === null || value === "") return [];
   const ids = Array.isArray(value) ? value : [value];
-  const uniqueIds = [...new Set(ids.map((id) => String(id)).filter(Boolean))];
-
-  for (const id of uniqueIds) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new Error("Invalid assignedTo");
-    }
-  }
-
-  return uniqueIds.map((id) => new Types.ObjectId(id));
+  return [...new Set(ids.map((id) => String(id)).filter(Boolean))];
 };
 
 const parseDueTime = (value: unknown) => {
@@ -37,158 +23,97 @@ const parseDueTime = (value: unknown) => {
   return dueTime;
 };
 
-const getCalendarDateTime = (dueDate: Date, dueTime: string | null) => {
-  if (!dueTime) return dueDate;
-  const [hours, minutes] = dueTime.split(":").map(Number);
-  const calendarDate = new Date(dueDate);
-  calendarDate.setHours(hours, minutes, 0, 0);
-  return calendarDate;
-};
-
 export async function POST(req: NextRequest) {
   try {
-    await dbConnect();
     const user = await isAuthenticatedUser(req);
     authorizeRoles(user, "admin", "team_member");
-    const userId = user._id?.toString();
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user data" }, { status: 401 });
-    }
 
     const body = await req.json();
+    // `contact_linked` is kept as the wire value the task form already sends;
+    // what it links to is now an enquiry.
     const type = (body.type || (body.contactId ? "contact_linked" : "custom")) as TaskType;
 
     if (!allowedTypes.includes(type)) {
       return NextResponse.json({ error: "Invalid task type" }, { status: 400 });
     }
-
     if (!body.title || typeof body.title !== "string") {
       return NextResponse.json({ error: "Task title is required" }, { status: 400 });
     }
-
-    if (body.contactId && !Types.ObjectId.isValid(body.contactId)) {
-      return NextResponse.json({ error: "Invalid contactId" }, { status: 400 });
-    }
-
-    let assignedTo: Types.ObjectId[] = [];
-    try {
-      assignedTo = user.role === "admin" ? parseAssignedTo(body.assignedTo) : [];
-    } catch (error: any) {
-      return NextResponse.json({ error: error.message || "Invalid assignedTo" }, { status: 400 });
-    }
-
     if (body.priority && !allowedPriorities.includes(body.priority)) {
       return NextResponse.json({ error: "Invalid priority" }, { status: 400 });
     }
-
     if (body.status && !allowedStatuses.includes(body.status)) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
 
+    // Only an admin can hand a task to someone else; a team member's task is
+    // their own.
+    const assignedTo = user.role === "admin" ? parseAssignedTo(body.assignedTo) : [];
+
     if (type === "contact_linked") {
-      const contact = await Contact.findById(body.contactId).select("_id name").lean();
-      if (!contact) {
-        return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+      if (!body.contactId) {
+        return NextResponse.json(
+          { error: "contactId is required for a contact_linked task" },
+          { status: 400 }
+        );
+      }
+      const enquiry = await prisma.enquiry.findUnique({
+        where: { id: body.contactId },
+        select: { id: true },
+      });
+      if (!enquiry) {
+        return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
       }
     }
 
-    const dueDate = body.dueDate ? new Date(body.dueDate) : null;
     let dueTime: string | null = null;
     try {
       dueTime = parseDueTime(body.dueTime);
-    } catch (error: any) {
-      return NextResponse.json({ error: error.message || "Invalid dueTime" }, { status: 400 });
-    }
-    const shouldAddToCalendar = Boolean(body.addToCalendar) && Boolean(dueDate);
-    const session = await mongoose.startSession();
-    let taskId: Types.ObjectId | undefined;
-
-    try {
-      await session.withTransaction(async () => {
-        const [task] = await Task.create(
-          [
-            {
-              title: body.title,
-              description: body.description || null,
-              type,
-              contactId: type === "contact_linked" ? new Types.ObjectId(body.contactId) : null,
-              assignedTo,
-              dueDate,
-              dueTime,
-              priority: body.priority || "medium",
-              status: body.status || "open",
-              owner: new Types.ObjectId(userId),
-              createdBy: new Types.ObjectId(userId),
-            },
-          ],
-          { session }
-        );
-        taskId = task._id as Types.ObjectId;
-
-        if (task.contactId) {
-          await logContactActivity({
-            contactId: task.contactId,
-            event: "TASK_CREATED",
-            description: `Task created: ${task.title}`,
-            performedBy: userId,
-            metadata: {
-              taskId: task._id,
-              title: task.title,
-              status: task.status,
-              priority: task.priority,
-              dueTime: task.dueTime,
-              addToCalendar: shouldAddToCalendar,
-            },
-            session,
-          });
-        }
-
-        if (shouldAddToCalendar && dueDate) {
-          const calendarDate = getCalendarDateTime(dueDate, task.dueTime ?? null);
-          await CalendarEvent.create(
-            [
-              {
-                title: task.title,
-                start: calendarDate.toISOString(),
-                end: calendarDate.toISOString(),
-                allDay: !task.dueTime,
-                extendedProps: { calendar: task.priority === "high" ? "Danger" : "Primary" },
-                task: task._id,
-                contact: task.contactId ?? null,
-                user: task.assignedTo[0] ?? task.owner,
-              },
-            ],
-            { session }
-          );
-        }
-      });
-    } finally {
-      await session.endSession();
+    } catch (error: unknown) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Invalid dueTime" },
+        { status: 400 }
+      );
     }
 
-    const populatedTask = await Task.findById(taskId)
-      .populate("contactId", "name")
-      .populate("assignedTo", "name email")
-      .populate("owner", "name email")
-      .populate("createdBy", "name email")
-      .lean();
+    const task = await prisma.task.create({
+      data: {
+        title: body.title,
+        description: body.description || null,
+        type,
+        enquiryId: type === "contact_linked" ? body.contactId : null,
+        dueDate: body.dueDate ? new Date(body.dueDate) : null,
+        dueTime,
+        priority: body.priority || "medium",
+        status: body.status || "open",
+        ownerId: user.id,
+        createdById: user.id,
+        ...(assignedTo.length && {
+          assignedTo: { create: assignedTo.map((userId) => ({ userId })) },
+        }),
+      },
+      include: TASK_INCLUDE,
+    });
 
-    return NextResponse.json({ message: "Task created successfully", task: populatedTask }, { status: 201 });
-  } catch (error: any) {
-    console.error("Error creating task:", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { message: "Task created successfully", task: serializeTask(task) },
+      { status: 201 }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const unauthorized = message.includes("login") || message.includes("Not allowed");
+    if (!unauthorized) console.error("Error creating task:", error);
+    return NextResponse.json(
+      { error: unauthorized ? message : "Internal server error" },
+      { status: unauthorized ? 401 : 500 }
+    );
   }
 }
 
 export async function GET(req: NextRequest) {
   try {
-    await dbConnect();
     const user = await isAuthenticatedUser(req);
     authorizeRoles(user, "admin", "team_member");
-    const userId = user._id?.toString();
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user data" }, { status: 401 });
-    }
 
     const { searchParams } = new URL(req.url);
     const contactId = searchParams.get("contactId");
@@ -200,37 +125,34 @@ export async function GET(req: NextRequest) {
     const updatedEndDate = searchParams.get("updatedEndDate");
     const page = Math.max(Number(searchParams.get("page") || 1), 1);
     const limit = Math.min(Math.max(Number(searchParams.get("limit") || 12), 1), 100);
-    const skip = (page - 1) * limit;
-    const query: Record<string, any> = {};
+
+    const where: Prisma.TaskWhereInput = {};
 
     if (contactId) {
-      if (!Types.ObjectId.isValid(contactId)) {
-        return NextResponse.json({ error: "Invalid contactId" }, { status: 400 });
-      }
-      query.contactId = new Types.ObjectId(contactId);
-    } else if (user.role === "team_member") {
-      query.$or = [
-        { assignedTo: new mongoose.Types.ObjectId(userId) },
-        { owner: new mongoose.Types.ObjectId(userId) },
-        { createdBy: new mongoose.Types.ObjectId(userId) },
+      where.enquiryId = contactId;
+    } else if (user.role !== "admin") {
+      // A non-admin's board shows what they own, created, or were given.
+      where.OR = [
+        { assignedTo: { some: { userId: user.id } } },
+        { ownerId: user.id },
+        { createdById: user.id },
       ];
     }
 
     if (assignedTo && user.role === "admin") {
       try {
-        const selectedUsers = JSON.parse(assignedTo) as { _id: string; isNot?: boolean }[];
-        const includeIds = selectedUsers
-          .filter((item) => !item.isNot && Types.ObjectId.isValid(item._id))
-          .map((item) => new Types.ObjectId(item._id));
-        const excludeIds = selectedUsers
-          .filter((item) => item.isNot && Types.ObjectId.isValid(item._id))
-          .map((item) => new Types.ObjectId(item._id));
+        const selected = JSON.parse(assignedTo) as { _id: string; isNot?: boolean }[];
+        const include = selected.filter((item) => !item.isNot).map((item) => item._id);
+        const exclude = selected.filter((item) => item.isNot).map((item) => item._id);
 
-        if (includeIds.length > 0 || excludeIds.length > 0) {
-          query.assignedTo = {};
-          if (includeIds.length > 0) query.assignedTo.$in = includeIds;
-          if (excludeIds.length > 0) query.assignedTo.$nin = excludeIds;
+        const clauses: Prisma.TaskWhereInput[] = [];
+        if (include.length) {
+          clauses.push({ assignedTo: { some: { userId: { in: include } } } });
         }
+        if (exclude.length) {
+          clauses.push({ assignedTo: { none: { userId: { in: exclude } } } });
+        }
+        if (clauses.length) where.AND = clauses;
       } catch {
         return NextResponse.json({ error: "Invalid assignedTo filter" }, { status: 400 });
       }
@@ -240,53 +162,43 @@ export async function GET(req: NextRequest) {
       if (!allowedStatuses.includes(status as TaskStatus)) {
         return NextResponse.json({ error: "Invalid status" }, { status: 400 });
       }
-      query.status = status;
+      where.status = status as TaskStatus;
     }
 
-    if (dueStartDate || dueEndDate) {
-      query.dueDate = {};
-      if (dueStartDate) {
-        const start = new Date(dueStartDate);
+    const dayRange = (from: string | null, to: string | null) => {
+      const range: Prisma.DateTimeFilter = {};
+      if (from) {
+        const start = new Date(from);
         start.setHours(0, 0, 0, 0);
-        query.dueDate.$gte = start;
+        range.gte = start;
       }
-      if (dueEndDate) {
-        const end = new Date(dueEndDate);
+      if (to) {
+        const end = new Date(to);
         end.setHours(23, 59, 59, 999);
-        query.dueDate.$lte = end;
+        range.lte = end;
       }
-    }
+      return Object.keys(range).length ? range : undefined;
+    };
 
-    if (updatedStartDate || updatedEndDate) {
-      query.updatedAt = {};
-      if (updatedStartDate) {
-        const start = new Date(updatedStartDate);
-        start.setHours(0, 0, 0, 0);
-        query.updatedAt.$gte = start;
-      }
-      if (updatedEndDate) {
-        const end = new Date(updatedEndDate);
-        end.setHours(23, 59, 59, 999);
-        query.updatedAt.$lte = end;
-      }
-    }
+    const dueRange = dayRange(dueStartDate, dueEndDate);
+    if (dueRange) where.dueDate = dueRange;
+    const updatedRange = dayRange(updatedStartDate, updatedEndDate);
+    if (updatedRange) where.updatedAt = updatedRange;
 
     const [tasks, total] = await Promise.all([
-      Task.find(query)
-        .populate("contactId", "name")
-        .populate("assignedTo", "name email")
-        .populate("owner", "name email")
-        .populate("createdBy", "name email")
-        .sort({ dueDate: 1, createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Task.countDocuments(query),
+      prisma.task.findMany({
+        where,
+        include: TASK_INCLUDE,
+        orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.task.count({ where }),
     ]);
 
     return NextResponse.json(
       {
-        tasks,
+        tasks: tasks.map(serializeTask),
         pagination: {
           page,
           limit,
@@ -296,8 +208,13 @@ export async function GET(req: NextRequest) {
       },
       { status: 200 }
     );
-  } catch (error: any) {
-    console.error("Error fetching tasks:", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const unauthorized = message.includes("login") || message.includes("Not allowed");
+    if (!unauthorized) console.error("Error fetching tasks:", error);
+    return NextResponse.json(
+      { error: unauthorized ? message : "Internal server error" },
+      { status: unauthorized ? 401 : 500 }
+    );
   }
 }

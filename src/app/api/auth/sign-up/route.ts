@@ -1,16 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import User from '@/app/models/User'; // Adjust path to your User model
-import { z } from 'zod';
-import dbConnect from './../../../lib/db/connection';
-import sendToken from '../../utils/sendToken';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
+import { hashPassword } from "@/app/lib/auth/password";
+import sendToken from "../../utils/sendToken";
 
-// Define validation schema using Zod
 const registerSchema = z.object({
   name: z.string().max(50).optional(),
   email: z.string().email(),
   password: z.string().min(6),
-  phone: z.string()
-    .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format'),
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number format"),
 });
 
 export async function POST(request: NextRequest) {
@@ -22,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Invalid input data',
+          message: "Invalid input data",
           errors: parsedData.error.issues,
         },
         { status: 400 }
@@ -31,42 +30,39 @@ export async function POST(request: NextRequest) {
 
     const { name, email, password, phone } = parsedData.data;
 
-    await dbConnect();
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email: email.toLowerCase(),
+        phone,
+        password: await hashPassword(password),
+        signupMethod: "EmailPassword",
+      },
+      select: { id: true, name: true, email: true },
+    });
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
-    if (existingUser) {
+    return sendToken(user, 201);
+  } catch (error: unknown) {
+    // Let the unique index decide, rather than a prior findFirst that another
+    // concurrent signup could slip past between the check and the insert.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
       return NextResponse.json(
         {
           success: false,
-          message: existingUser.email === email 
-            ? 'User with this email already exists'
-            : 'User with this phone number already exists',
+          message: "User with this email already exists",
         },
         { status: 400 }
       );
     }
 
-    // Create new user
-    const user = new User({
-      name,
-      email,
-      password,
-      phone,
-      signupMethod: 'Email/Password',
-    });
-
-    // Save user to database
-    await user.save();
-
-    // Use sendToken to generate response with token and cookie
-    return sendToken(user, 201);
-  } catch (error: unknown) {
-    console.error('Registration error:', error);
+    console.error("Registration error:", error);
     return NextResponse.json(
       {
         success: false,
-        message: 'Internal server error',
+        message: "Internal server error",
       },
       { status: 500 }
     );

@@ -1,7 +1,7 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import { userApi } from "./userApi";
 import { setIsAuthenticated, setUser } from "../features/authSlice";
-import { IUser } from "@/app/models/User";
+import type { IUser } from "@/app/types/user";
 
 interface RegisterRequest {
   email: string;

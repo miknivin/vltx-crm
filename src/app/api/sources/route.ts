@@ -1,28 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import dbConnect from "@/app/lib/db/connection";
-import Source from "@/app/models/Source";
+import { Prisma } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
 import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
 
-const DEFAULT_SOURCES = ["Facebook", "SEO"];
+/// Where a VLTX enquiry can come from. Seeded on first read so a fresh
+/// deployment has usable options without anyone remembering to run the seed.
+const DEFAULT_SOURCES = [
+  "Website Valuation Form",
+  "Walk-in",
+  "Referral",
+  "Phone Enquiry",
+  "WhatsApp",
+  "Instagram",
+  "Manual Entry",
+];
 
-// Self-heals an empty Source collection the first time anyone hits this
-// route, in any environment (dev, production) — so the two default sources
-// don't depend on someone remembering to run the seed script by hand there.
 async function ensureDefaultSources() {
-  const count = await Source.estimatedDocumentCount();
+  const count = await prisma.source.count();
   if (count > 0) return;
 
-  await Source.insertMany(
-    DEFAULT_SOURCES.map((title) => ({ title })),
-    { ordered: false }
-  ).catch(() => {
-    // Ignore duplicate-key races from a concurrent first request.
+  await prisma.source.createMany({
+    data: DEFAULT_SOURCES.map((title) => ({ title })),
+    // Ignore a race with a concurrent first request.
+    skipDuplicates: true,
   });
 }
 
 export async function GET(req: NextRequest) {
   try {
-    await dbConnect();
     const user = await isAuthenticatedUser(req);
     authorizeRoles(user, "admin", "team_member");
 
@@ -32,50 +37,84 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const limit = Math.min(Math.max(Number(searchParams.get("limit") || 20), 1), 50);
 
-    const query = search ? { title: { $regex: search, $options: "i" } } : {};
+    const sources = await prisma.source.findMany({
+      where: search ? { title: { contains: search, mode: "insensitive" } } : {},
+      orderBy: { title: "asc" },
+      take: limit,
+    });
 
-    const sources = await Source.find(query).sort({ title: 1 }).limit(limit).lean();
-
-    return NextResponse.json({ sources }, { status: 200 });
-  } catch (error: unknown) {
-    const err = error as Error;
     return NextResponse.json(
-      { error: err.message || "Internal server error" },
-      { status: err.message?.includes("login") || err.message?.includes("Not allowed") ? 401 : 500 }
+      {
+        sources: sources.map((source) => ({
+          _id: source.id,
+          title: source.title,
+          createdAt: source.createdAt,
+        })),
+      },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const unauthorized = message.includes("login") || message.includes("Not allowed");
+    if (!unauthorized) console.error("Error fetching sources:", error);
+    return NextResponse.json(
+      { error: unauthorized ? message : "Internal server error" },
+      { status: unauthorized ? 401 : 500 }
     );
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    await dbConnect();
     const user = await isAuthenticatedUser(req);
     authorizeRoles(user, "admin", "team_member");
 
     const body = await req.json();
     const title = typeof body.title === "string" ? body.title.trim() : "";
+
     if (!title) {
       return NextResponse.json({ error: "Source title is required" }, { status: 400 });
     }
     if (title.length > 100) {
-      return NextResponse.json({ error: "Source title cannot exceed 100 characters" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Source title cannot exceed 100 characters" },
+        { status: 400 }
+      );
     }
 
-    // Case-insensitive existing match wins over creating a near-duplicate
-    // ("facebook" typed after "Facebook" already exists just selects it).
-    const existing = await Source.findOne({ title: { $regex: `^${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } });
+    // Typing "whatsapp" when "WhatsApp" exists selects the existing one
+    // rather than creating a near-duplicate.
+    const existing = await prisma.source.findFirst({
+      where: { title: { equals: title, mode: "insensitive" } },
+    });
     if (existing) {
-      return NextResponse.json({ message: "Source already exists", source: existing }, { status: 200 });
+      return NextResponse.json(
+        {
+          message: "Source already exists",
+          source: { _id: existing.id, title: existing.title },
+        },
+        { status: 200 }
+      );
     }
 
-    const source = await Source.create({ title });
-    return NextResponse.json({ message: "Source created successfully", source }, { status: 201 });
+    const source = await prisma.source.create({ data: { title } });
+    return NextResponse.json(
+      {
+        message: "Source created successfully",
+        source: { _id: source.id, title: source.title },
+      },
+      { status: 201 }
+    );
   } catch (error: unknown) {
-    const err = error as Error;
-    const status = err.message?.includes("login") || err.message?.includes("Not allowed") ? 401 : 500;
-    if ((error as { code?: number }).code === 11000) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ error: "Source already exists" }, { status: 409 });
     }
-    return NextResponse.json({ error: err.message || "Internal server error" }, { status });
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const unauthorized = message.includes("login") || message.includes("Not allowed");
+    if (!unauthorized) console.error("Error creating source:", error);
+    return NextResponse.json(
+      { error: unauthorized ? message : "Internal server error" },
+      { status: unauthorized ? 401 : 500 }
+    );
   }
 }

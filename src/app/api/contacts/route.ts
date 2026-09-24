@@ -1,202 +1,101 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import dbConnect from "@/app/lib/db/connection";
 import { NextRequest, NextResponse } from "next/server";
-import { ExtendedNextRequest, validateContactRequest } from "../middlewares/validateContactCreate";
-import Contact from "@/app/models/Contact";
-import Pipeline from "@/app/models/Pipeline";
-import Stage from "@/app/models/Stage";
-import mongoose from "mongoose";
+import { Prisma } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
 import { isAuthenticatedUser } from "../middlewares/auth";
-import { logContactActivity } from "../utils/activityLog";
+import { createEnquiry, EnquiryInputError } from "@/app/lib/enquiry/createEnquiry";
+import { ENQUIRY_INCLUDE, serializeEnquiry } from "@/app/lib/enquiry/serialize";
 
 export async function POST(req: NextRequest) {
-  const validationResponse = await validateContactRequest(req as ExtendedNextRequest);
-  if (validationResponse) {
-    return validationResponse;
-  }
-
   try {
-     await dbConnect();
-    
-    
     const user = await isAuthenticatedUser(req);
- 
-    const {
-      name,
-      email,
-      phone,
-      notes,
-      userId,
-      tags = [],
-      stage,
-      businessName,
-      source,
-      preferredVisitingTime,
-      numberOfPeople,
-      preferredNightsAndDays,
-    } = (req as ExtendedNextRequest).validatedBody!;
+    const body = await req.json();
 
-    const parsedNumberOfPeople =
-      numberOfPeople !== undefined && numberOfPeople !== ""
-        ? Number(String(numberOfPeople).replace(/[^\d.]/g, ""))
-        : undefined;
-
-    const tagSubdocuments = tags
-      ? tags.map((tagName: string) => ({
-          user: new mongoose.Types.ObjectId(userId),
-          name: tagName,
-        }))
-      : [];
-
-    // Prepare assignedTo based on user role
-    const assignedTo = user.role === "team_member"
-      ? [
-          {
-            user: new mongoose.Types.ObjectId(user._id),
-            time: new Date(),
-          },
-        ]
-      : [];
-
-    // Prepare contact data
-    const contactData = {
-      name,
-      email,
-      phone,
-      notes,
-      user: new mongoose.Types.ObjectId(userId),
-      businessName,
-      tags: tagSubdocuments,
-      assignedTo, // Include assignedTo in contactData
-      ...(source ? { source } : {}),
-      ...(preferredVisitingTime ? { preferredVisitingTime } : {}),
-      ...(parsedNumberOfPeople !== undefined && !Number.isNaN(parsedNumberOfPeople)
-        ? { numberOfPeople: parsedNumberOfPeople }
-        : {}),
-      ...(preferredNightsAndDays ? { preferredNightsAndDays } : {}),
-    };
-
-    // Define pipeline and stage IDs
-    const pipelineId = new mongoose.Types.ObjectId(process.env.DEFAULT_PIPELINE || "682da76cb5aab2e983c88634");
-    let stageId = new mongoose.Types.ObjectId(process.env.DEFAULT_STAGE || "682da76db5aab2e983c88636");
-
-    // If stage is provided in the request body, use it
-    if (stage) {
-      try {
-        stageId = new mongoose.Types.ObjectId(stage);
-      } catch (error) {
-        console.log(error);
-        
-        return NextResponse.json(
-          { error: "Invalid stage ID format" },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Validate pipeline existence
-    const pipeline = await Pipeline.findById(pipelineId);
-    if (!pipeline) {
-      return NextResponse.json(
-        { error: "Pipeline not found" },
-        { status: 404 }
-      );
-    }
-
-    // Validate stage existence and ensure it belongs to the pipeline
-    const stageDoc = await Stage.findOne({ _id: stageId, pipeline_id: pipelineId });
-    if (!stageDoc) {
-      return NextResponse.json(
-        { error: "Stage not found or does not belong to the specified pipeline" },
-        { status: 404 }
-      );
-    }
-
-    const session = await mongoose.startSession();
-    let contact;
-    try {
-      await session.withTransaction(async () => {
-        const existingContact = await Contact.exists({ email }).session(session);
-        contact = await Contact.upsertContact(
-          {
-            ...contactData,
-            tags: new mongoose.Types.DocumentArray(tagSubdocuments),
-            assignedTo: new mongoose.Types.DocumentArray(assignedTo),
-          },
-          new mongoose.Types.ObjectId(userId),
-          session
-        );
-
-        if (!existingContact) {
-          await logContactActivity({
-            contactId: contact._id,
-            event: "CONTACT_CREATED",
-            description: `Contact created: ${contact.name}`,
-            performedBy: userId,
-            metadata: { name, email, phone },
-            session,
-          });
-        }
-
-        // Add contact to the pipeline's pipelinesActive array
-        const pipelineActiveEntry = {
-          pipeline_id: pipelineId,
-          stage_id: stageId,
-          order: 0, // Default order; adjust as needed
-        };
-
-        // Batch every mutation onto this document into local pushes, then a
-        // single .save() — chaining separate .save()/.logActivity() calls
-        // here previously raced Contact.upsertContact()'s own internal save
-        // (and each other) into Mongoose VersionErrors, since every .save()
-        // re-checks the document version against whatever's already in the
-        // DB. One save means one version check.
-        contact.pipelinesActive.push(pipelineActiveEntry);
-        contact.activities.push({
-          action: "PIPELINE_ADDED",
-          user: new mongoose.Types.ObjectId(userId),
-          details: { pipelineName: pipeline.name, stageName: stageDoc.name },
-          createdAt: new Date(),
-        });
-
-        if (user.role === "team_member") {
-          contact.activities.push({
-            action: "ASSIGNED_TO_UPDATED",
-            user: new mongoose.Types.ObjectId(userId),
-            details: { assignedUserNames: [user.name] },
-            createdAt: new Date(),
-          });
-        }
-
-        if (tags && tags.length > 0) {
-          for (const tagName of tags) {
-            contact.activities.push({
-              action: "TAG_ADDED",
-              user: new mongoose.Types.ObjectId(userId),
-              details: { tagName },
-              createdAt: new Date(),
-            });
-          }
-        }
-
-        await contact.save({ session });
-      });
-    } finally {
-      await session.endSession();
-    }
+    const enquiry = await createEnquiry(
+      {
+        ...body,
+        // The old payload called these `phone` and `businessName`; accept both
+        // spellings so existing callers keep working.
+        mobile: body.mobile ?? body.phone,
+        sourceTitle: body.sourceTitle ?? body.source,
+        // A non-admin creating an enquiry owns it immediately — otherwise
+        // they would not be able to see the record they just made.
+        assignToUserId:
+          body.assignToUserId ?? (user.role === "admin" ? null : user.id),
+      },
+      user.id
+    );
 
     return NextResponse.json(
       {
-        message: "Contact created/updated successfully and added to pipeline",
-        contact,
+        message: "Enquiry created and added to pipeline",
+        contact: serializeEnquiry(enquiry),
       },
       { status: 201 }
     );
-  } catch (error) {
-    console.error("Error creating contact or adding to pipeline:", error);
+  } catch (error: unknown) {
+    if (error instanceof EnquiryInputError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("login")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    console.error("Error creating enquiry:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const user = await isAuthenticatedUser(req);
+    const { searchParams } = new URL(req.url);
+
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const limit = Math.max(1, parseInt(searchParams.get("limit") || "10", 10));
+    const keyword = searchParams.get("keyword")?.trim();
+
+    const where: Prisma.EnquiryWhereInput = {};
+    // Scope for every non-admin role, not just team members.
+    if (user.role !== "admin") {
+      where.assignedTo = { some: { userId: user.id } };
+    }
+    if (keyword) {
+      where.OR = [
+        { customer: { name: { contains: keyword, mode: "insensitive" } } },
+        { customer: { mobile: { contains: keyword, mode: "insensitive" } } },
+        { customer: { email: { contains: keyword, mode: "insensitive" } } },
+        { brand: { contains: keyword, mode: "insensitive" } },
+        { description: { contains: keyword, mode: "insensitive" } },
+      ];
+    }
+
+    const [enquiries, total] = await Promise.all([
+      prisma.enquiry.findMany({
+        where,
+        include: ENQUIRY_INCLUDE,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.enquiry.count({ where }),
+    ]);
+
+    const contacts = enquiries.map(serializeEnquiry);
+
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+      {
+        contacts,
+        enquiries: contacts,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      },
+      { status: 200 }
     );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("login")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    console.error("Error listing enquiries:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

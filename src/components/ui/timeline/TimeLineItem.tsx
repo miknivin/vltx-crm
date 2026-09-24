@@ -38,8 +38,8 @@ const formatValue = (value: any, indent: number = 0): string => {
 const formatDetails = (activity: ResponseActivity): string => {
   const { action, details } = activity;
   switch (action) {
-    case 'CONTACT_CREATED':
-      return formatValue(details.updatedFields);
+    case 'ENQUIRY_CREATED':
+      return formatValue(details.updatedFields ?? details);
     case 'NOTE_ADDED':
     case 'NOTE_UPDATED':
       return details.newNotes ? formatValue(details.newNotes) : 'No note provided';
@@ -49,21 +49,20 @@ const formatDetails = (activity: ResponseActivity): string => {
       return `added tags: ${formatValue(details.addedTags ||details.tagName)}`;
     case 'TAG_REMOVED':
       return `removed tags: ${formatValue(details.removedTags)}`;
-    case 'CONTACT_UPDATED':
-      return `field: ${details.field}\nold value: ${details.oldValue}\nnew value: ${details.newValue}`;
+    case 'ENQUIRY_UPDATED':
+      return details.field
+        ? `field: ${details.field}\nold value: ${details.oldValue}\nnew value: ${details.newValue}`
+        : formatValue(details.updatedFields ?? details);
     case 'PIPELINE_ADDED':
-      return `pipeline id: ${details.pipelineId}\nstage id: ${details.stageId}`;
-    case 'TASK_CREATED':
-      return `task: ${details.title || details.description || 'Task created'}\nstatus: ${details.status || 'open'}\npriority: ${details.priority || 'medium'}`;
-    case 'TASK_UPDATED':
-      return details.description ? String(details.description) : formatValue(details);
-    case 'TASK_DELETED':
-      return details.description ? String(details.description) : formatValue(details);
+      return `pipeline: ${details.pipelineName}\nstage: ${details.stageName}`;
+    case 'PIPELINE_STAGE_UPDATED':
+      return `from: ${details.oldStageName ?? details.fromStage}\nto: ${details.newStageName ?? details.toStage}`;
     case 'REMARK_ADDED':
-      return details.description ? String(details.description) : formatValue(details);
-    case 'CONTACT_RESPONSE_ADDED':
-    case 'CONTACT_RESPONSE_UPDATED':
-      return `activity: ${details.activity}\nnote: ${details.note || 'None'}${details.meetingScheduledDate ? `\nmeeting: ${details.meetingScheduledDate}` : ''}`;
+      return details.text ? String(details.text) : formatValue(details);
+    case 'VALUATION_RECORDED':
+      return `estimated value: ${formatValue(details.estimatedValue)}`;
+    case 'OFFER_MADE':
+      return `offered amount: ${formatValue(details.offeredAmount)}`;
     default:
       return formatValue(details);
   }
@@ -87,46 +86,42 @@ const TimelineItem: React.FC<TimelineItemProps> = ({ activity }) => {
 
   const getActionText = (activity: ResponseActivity) => {
     switch (activity.action) {
-      case 'CONTACT_CREATED':
-        return `${activity?.user?.name || 'NIVIN'} created contact`;
+      case 'ENQUIRY_CREATED':
+        return `${activity?.user?.name || 'Someone'} created this enquiry`;
       case 'NOTE_ADDED':
-        return `${activity?.user?.name || 'NIVIN'} added a note`;
+        return `${activity?.user?.name || 'Someone'} added a note`;
       case 'NOTE_UPDATED':
-        return `${activity?.user?.name || 'NIVIN'} updated a note`;
+        return `${activity?.user?.name || 'Someone'} updated a note`;
       case 'PIPELINE_ADDED':
-        return `${activity?.user?.name || 'NIVIN'} added to pipeline`;
+        return `${activity?.user?.name || 'Someone'} added to pipeline`;
       case 'PIPELINE_STAGE_UPDATED':
-        return `${activity?.user?.name || 'NIVIN'} updated pipeline stage to ${activity.details.stage || 'unknown'}`;
-      case 'PIPELINE_STAGE_CHANGED':
-        return `${activity?.user?.name || 'NIVIN'} updated pipeline stage`;
+        return `${activity?.user?.name || 'Someone'} updated pipeline stage to ${activity.details.stage || 'unknown'}`;
+      case 'PIPELINE_REMOVED':
+        return `${activity?.user?.name || 'Someone'} removed it from a pipeline`;
       case 'ASSIGNED_TO_UPDATED':
-        return `${activity?.user?.name || 'NIVIN'} updated assignment`;
-      case 'TASK_CREATED':
-        return `${activity?.user?.name || 'NIVIN'} created a task`;
-      case 'TASK_UPDATED':
-        return `${activity?.user?.name || 'NIVIN'} updated a task`;
-      case 'TASK_DELETED':
-        return `${activity?.user?.name || 'NIVIN'} deleted a task`;
+        return `${activity?.user?.name || 'Someone'} updated assignment`;
       case 'REMARK_ADDED':
-        return `${activity?.user?.name || 'NIVIN'} added a remark`;
-      case 'CONTACT_RESPONSE_ADDED':
-        return `${activity?.user?.name || 'NIVIN'} logged a response`;
-      case 'CONTACT_RESPONSE_UPDATED':
-        return `${activity?.user?.name || 'NIVIN'} updated a response`;
+        return `${activity?.user?.name || 'Someone'} added a remark`;
+      case 'PHOTO_ADDED':
+        return `${activity?.user?.name || 'Someone'} added a photo`;
+      case 'VALUATION_RECORDED':
+        return `${activity?.user?.name || 'Someone'} recorded a valuation`;
+      case 'OFFER_MADE':
+        return `${activity?.user?.name || 'Someone'} made an offer`;
       case 'TAG_ADDED':
-        return `${activity?.user?.name || 'NIVIN'} added tag`;
+        return `${activity?.user?.name || 'Someone'} added tag`;
       case 'TAG_REMOVED':
-        return `${activity?.user?.name || 'NIVIN'} removed tag`;
-      case 'CONTACT_UPDATED':
-        return `${activity?.user?.name || 'NIVIN'} updated contact`;
+        return `${activity?.user?.name || 'Someone'} removed tag`;
+      case 'ENQUIRY_UPDATED':
+        return `${activity?.user?.name || 'Someone'} updated this enquiry`;
       default:
-        return `${activity?.user?.name || 'NIVIN'} performed ${activity.action}`;
+        return `${activity?.user?.name || 'Someone'} performed ${activity.action}`;
     }
   };
 
   const handleObjectIdClick = async (event: React.MouseEvent<HTMLPreElement>) => {
     const text = event.currentTarget.innerText;
-    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+    const objectIdRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const lines = text.split('\n');
 
     let currentKey = '';
@@ -199,7 +194,7 @@ const TimelineItem: React.FC<TimelineItemProps> = ({ activity }) => {
         </time>
         <div className="text-sm font-normal text-gray-500 dark:text-gray-300 sm:col-start-1 sm:row-start-1">
           {getActionText(activity)}
-          {activity.action !== 'PIPELINE_ADDED' && activity.action !== 'CONTACT_CREATED' && activity.details && (
+          {activity.action !== 'PIPELINE_ADDED' && activity.action !== 'ENQUIRY_CREATED' && activity.details && (
             <div
               id="details"
               className="p-3 text-xs italic font-normal text-gray-500 border border-gray-200 rounded-lg bg-gray-50 dark:bg-gray-600 dark:border-gray-500 dark:text-gray-300 mt-3 relative"

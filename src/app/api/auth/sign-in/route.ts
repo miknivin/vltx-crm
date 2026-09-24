@@ -1,7 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import User from '@/app/models/User'; 
-import { z } from 'zod';
-import dbConnect from './../../../lib/db/connection';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import prisma from "@/app/lib/db/prisma";
+import { verifyPassword } from "@/app/lib/auth/password";
+import {
+  AUTH_COOKIE,
+  SESSION_MAX_AGE_SECONDS,
+  authCookieOptions,
+  signJwtToken,
+} from "@/app/lib/auth/token";
 
 const signInSchema = z.object({
   email: z.string().email(),
@@ -17,7 +23,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Invalid input data',
+          message: "Invalid input data",
           errors: parsedData.error.issues,
         },
         { status: 400 }
@@ -26,43 +32,39 @@ export async function POST(request: NextRequest) {
 
     const { email, password } = parsedData.data;
 
-    // Connect to MongoDB using dbConnect
-    await dbConnect();
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        uid: true,
+        password: true,
+      },
+    });
 
-    // Check if user exists
-    const user = await User.findOne({ email }).select('+password');
-    if (!user) {
+    // Same message and status for "no such user" and "wrong password", so the
+    // endpoint can't be used to enumerate which addresses have accounts.
+    const isPasswordValid = await verifyPassword(password, user?.password ?? null);
+    if (!user || !isPasswordValid) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Invalid email or password',
+          message: "Invalid email or password",
         },
         { status: 401 }
       );
     }
 
-    // Verify password using schema method
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Invalid email or password',
-        },
-        { status: 401 }
-      );
-    }
+    const token = signJwtToken(user.id);
 
-    // Generate JWT token using schema method
-    const token = user.getJwtToken();
-
-    // Create response with token
     const response = NextResponse.json(
       {
         success: true,
-        message: 'Sign-in successful',
+        message: "Sign-in successful",
         user: {
-          _id: user._id,
+          _id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
@@ -72,22 +74,17 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
 
-    // Set token in cookie
-    response.cookies.set('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/',
-    });
+    // maxAge is seconds. The Mongo version passed milliseconds here, which the
+    // browser clamped to an effectively never-expiring cookie.
+    response.cookies.set(AUTH_COOKIE, token, authCookieOptions(SESSION_MAX_AGE_SECONDS));
 
     return response;
   } catch (error: unknown) {
-    console.error('Sign-in error:', error);
+    console.error("Sign-in error:", error);
     return NextResponse.json(
       {
         success: false,
-        message: 'Internal server error',
+        message: "Internal server error",
       },
       { status: 500 }
     );

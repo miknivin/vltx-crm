@@ -1,29 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import prisma from "@/app/lib/db/prisma";
 
-import dbConnect from '@/app/lib/db/connection';
-import Pipeline from '@/app/models/Pipeline';
-
-
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    console.log('exe');
-    
-    await dbConnect();
-    console.log(req.body,'no body');
-    
-    const pipelines = await Pipeline.find()
-      .select('name _id')
-      .lean();
-      
-    return NextResponse.json({
-      success: true,
-      data: pipelines,
-    }, { status: 200 });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    return NextResponse.json({
-      success: false,
-      message: error.message || 'Failed to fetch pipelines',
-    }, { status: 500 });
+    const pipelines = await prisma.pipeline.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: pipelines.map((pipeline) => ({ _id: pipeline.id, name: pipeline.name })),
+      },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    console.error("Error fetching pipeline names:", error);
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch pipelines" },
+      { status: 500 }
+    );
   }
 }

@@ -6,7 +6,6 @@ import {
   ResponseContact,
   TaskItem,
   TaskStatus,
-  useGetContactResponsesQuery,
   useGetTasksQuery,
   useUpdateContactMutation,
   useUpdateContactStageMutation,
@@ -19,9 +18,8 @@ import CardSwiper from '@/components/ui/swiper/CardSwiper';
 import { Modal } from "@/components/ui/modal";
 import TaskTabs from '@/components/pipeline/TaskTabs';
 import TaskCard from '@/components/pipeline/TaskCard';
-import ContactResponseTabs from '@/components/pipeline/ContactResponseTabs';
-import ContactResponseCard from '@/components/pipeline/ContactResponseCard';
 import SourceAutocomplete from './SourceAutocomplete';
+import EnquiryPhotoGallery from '@/components/contact/EnquiryPhotoGallery';
 import { useModal } from '@/hooks/useModal';
 
 interface UpdateContactFormProps {
@@ -33,11 +31,11 @@ interface ContactFormData {
   email: string;
   phone: string;
   notes?: string;
-  businessName?: string;
+  city?: string;
   source?: string;
-  preferredVisitingTime?: string;
-  numberOfPeople?: string;
-  preferredNightsAndDays?: string;
+  brand?: string;
+  estimatedValue?: string;
+  offeredAmount?: string;
 }
 
 const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
@@ -45,18 +43,16 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
   const [updateContactStage, { isLoading: isStageUpdating }] = useUpdateContactStageMutation();
   const [updateTask, { isLoading: isTaskUpdating }] = useUpdateTaskMutation();
   const { data: tasksData, isLoading: isTasksLoading, error: tasksError } = useGetTasksQuery({ contactId: contact._id });
-  const { data: responsesData, isLoading: isResponsesLoading, error: responsesError } = useGetContactResponsesQuery({ contactId: contact._id, limit: 4 });
-  const { isOpen: isResponseModalOpen, openModal: openResponseModal, closeModal: closeResponseModal } = useModal();
   const [formData, setFormData] = useState<ContactFormData>({
     name: '',
     email: '',
     phone: '',
     notes: '',
-    businessName: '',
+    city: '',
     source: '',
-    preferredVisitingTime: '',
-    numberOfPeople: '',
-    preferredNightsAndDays: '',
+    brand: '',
+    estimatedValue: '',
+    offeredAmount: '',
   });
   const [error, setError] = useState<string | null>(null);
   const [selectedStage, setSelectedStage] = useState<string>('');
@@ -74,11 +70,11 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
         email: contact.email || '',
         phone: contact.phone || '',
         notes: contact.notes || '',
-        businessName: contact.businessName || '',
+        city: contact.city || '',
         source: contact.source || '',
-        preferredVisitingTime: contact.preferredVisitingTime || '',
-        numberOfPeople: contact.numberOfPeople !== undefined && contact.numberOfPeople !== null ? String(contact.numberOfPeople) : '',
-        preferredNightsAndDays: contact.preferredNightsAndDays || '',
+        brand: contact.brand || '',
+        estimatedValue: contact.estimatedValue !== null && contact.estimatedValue !== undefined ? String(contact.estimatedValue) : '',
+        offeredAmount: contact.offeredAmount !== null && contact.offeredAmount !== undefined ? String(contact.offeredAmount) : '',
       });
       const pipelineEntry = Array.isArray(contact.pipelinesActive) && contact.pipelinesActive.length > 0
         ? contact.pipelinesActive.find(entry => entry.pipeline_id?.toString() === DEFAULT_PIPELINE_ID)
@@ -107,11 +103,11 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
         email: formData.email,
         phone: formData.phone,
         notes: formData.notes,
-        businessName: formData.businessName,
+        city: formData.city,
         source: formData.source,
-        preferredVisitingTime: formData.preferredVisitingTime,
-        numberOfPeople: formData.numberOfPeople,
-        preferredNightsAndDays: formData.preferredNightsAndDays,
+        brand: formData.brand,
+        estimatedValue: formData.estimatedValue,
+        offeredAmount: formData.offeredAmount,
         tags: contact.tags || [], // Preserve existing tags
       };
 
@@ -166,9 +162,6 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
   return (
     <>    <Modal isOpen={isNotesModalOpen} onClose={closeNotesModal} className="max-w-[600px] p-6">
         <TaskTabs contact={contact} onClose={closeNotesModal} />
-      </Modal>
-      <Modal isOpen={isResponseModalOpen} onClose={closeResponseModal} className="max-w-[600px] p-6">
-        <ContactResponseTabs contact={contact} onClose={closeResponseModal} />
       </Modal>
     <div className="space-y-6 sticky top-1 md:top-20">
       
@@ -225,17 +218,14 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
           />
         </div>
         <div>
-          <label
-            htmlFor="businessName"
-            className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-          >
-            Business Name
+          <label htmlFor="city" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+            City
           </label>
           <input
             type="text"
-            id="businessName"
-            name="businessName"
-            value={formData.businessName}
+            id="city"
+            name="city"
+            value={formData.city}
             onChange={handleInputChange}
             className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
           />
@@ -247,50 +237,44 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
-            <label
-              htmlFor="preferredVisitingTime"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-            >
-              Preferred Visiting Time
+            <label htmlFor="brand" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+              Brand / Maker
             </label>
             <input
               type="text"
-              id="preferredVisitingTime"
-              name="preferredVisitingTime"
-              value={formData.preferredVisitingTime}
+              id="brand"
+              name="brand"
+              value={formData.brand}
               onChange={handleInputChange}
               className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
             />
           </div>
           <div>
-            <label
-              htmlFor="numberOfPeople"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-            >
-              Number Of People
+            <label htmlFor="estimatedValue" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+              Estimated Value (₹)
             </label>
             <input
               type="number"
-              id="numberOfPeople"
-              name="numberOfPeople"
+              id="estimatedValue"
+              name="estimatedValue"
               min="0"
-              value={formData.numberOfPeople}
+              step="0.01"
+              value={formData.estimatedValue}
               onChange={handleInputChange}
               className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
             />
           </div>
           <div>
-            <label
-              htmlFor="preferredNightsAndDays"
-              className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-            >
-              Preferred Nights &amp; Days
+            <label htmlFor="offeredAmount" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+              Offered Amount (₹)
             </label>
             <input
-              type="text"
-              id="preferredNightsAndDays"
-              name="preferredNightsAndDays"
-              value={formData.preferredNightsAndDays}
+              type="number"
+              id="offeredAmount"
+              name="offeredAmount"
+              min="0"
+              step="0.01"
+              value={formData.offeredAmount}
               onChange={handleInputChange}
               className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
             />
@@ -377,6 +361,10 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
       </form>
 
       <div className="mt-6">
+        <EnquiryPhotoGallery photos={contact.photos ?? []} />
+      </div>
+
+      <div className="mt-6">
         <div className='flex justify-between mb-4 items-center'>
            <h2 className="text-lg font-semibold text-start text-gray-900 dark:text-white">
              Contact Tasks
@@ -414,42 +402,6 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400">
             No tasks linked to this contact.
-          </p>
-        )}
-      </div>
-
-      <div className="mt-6">
-        <div className='flex justify-between mb-4 items-center'>
-           <h2 className="text-lg font-semibold text-start text-gray-900 dark:text-white">
-             Call Responses
-           </h2>
-            <button
-              type="button"
-              role="button"
-              onClick={openResponseModal}
-              className="inline-flex items-center justify-center font-medium gap-1 rounded-lg transition px-5 py-2.5 text-sm bg-brand-500 text-white shadow-theme-xs hover:bg-brand-600 disabled:bg-brand-300 disabled:text-white"
-            >
-              Add +
-            </button>
-        </div>
-
-        {isResponsesLoading ? (
-          <div className="flex justify-center">
-            <VeryShortSpinnerPrimary />
-          </div>
-        ) : responsesError ? (
-          <p className="text-red-500 text-sm">
-            Failed to load call responses: {(responsesError as any)?.data?.error || 'Unknown error'}
-          </p>
-        ) : responsesData?.responses && responsesData.responses.length > 0 ? (
-          <CardSwiper
-            items={responsesData.responses}
-            getKey={(response) => response._id}
-            renderItem={(response) => <ContactResponseCard response={response} />}
-          />
-        ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            No call responses logged for this contact.
           </p>
         )}
       </div>

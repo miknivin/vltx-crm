@@ -1,5 +1,3 @@
-import { Types } from 'mongoose';
-
 interface PipelineRequest {
   name: string;
   notes?: string;
@@ -14,7 +12,7 @@ export function validatePipelineCreate(data: PipelineRequest): { error?: string 
   }
 
   // Validate userId
-  if (!data.userId || !Types.ObjectId.isValid(data.userId)) {
+  if (!data.userId || typeof data.userId !== 'string') {
     return { error: 'Invalid user ID' };
   }
 

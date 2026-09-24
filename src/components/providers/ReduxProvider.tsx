@@ -8,7 +8,7 @@ import { useGetMeQuery } from '@/app/redux/api/userApi';
 import { useSelector } from 'react-redux';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { IUser } from '@/app/models/User';
+import type { IUser } from "@/app/types/user";
 import FullLoadingScreen from '../ui/loaders/FullLoadingScreen';
 
 interface ReduxProviderProps {

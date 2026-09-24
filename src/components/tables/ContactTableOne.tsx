@@ -19,8 +19,6 @@ import Link from "next/link";
 import AssignUserIcon from "../ui/flowbiteIcons/Assign";
 import { RootState } from '@/app/redux/rootReducer';
 import { useSelector } from "react-redux";
-import GenerateProposalForm from "../form/proposal-form/GenerateProposalForm";
-import InvoiceIcon from "../ui/flowbiteIcons/InvoiceIcon";
 
 export interface FilterParams {
   assignedTo?: { userId: string; isNot: boolean }[];
@@ -43,8 +41,7 @@ const ContactTableOne: React.FC = () => {
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const { isOpen, openModal, closeModal } = useModal();
   const [limit, setLimit] = useState("10");
-  const [modalType, setModalType] = useState<"addToPipeline" | "assignContacts" | "proposal" | null>(null);
-  const [selectedProposalContact, setSelectedProposalContact] = useState<{ _id: string; name: string } | null>(null);
+  const [modalType, setModalType] = useState<"addToPipeline" | "assignContacts" | null>(null);
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useSelector((state: RootState) => state.user);
@@ -185,11 +182,6 @@ const ContactTableOne: React.FC = () => {
     setParams((prev) => ({ ...prev, limit: parseInt(value), page: 1 }));
   };
 
-  const handleProposalOpen = (contact: ResponseContact) => {
-    setSelectedProposalContact({ _id: contact._id, name: contact.name });
-    setModalType("proposal");
-    openModal();
-  };
 
   // Clear selections after form submission
   const handleFormSubmit = () => {
@@ -213,8 +205,7 @@ const ContactTableOne: React.FC = () => {
     data?.contacts?.every((contact) => selectedContacts.includes(contact._id));
 
   const isAdmin = user && user.role === "admin";
-  const canGenerateProposal = user && ["admin", "team_member"].includes(user.role);
-  const columnCount = (isAdmin ? 1 : 0) + 1 + 1 + 1 + (isAdmin ? 1 : 0) + 1 + 1 + (canGenerateProposal ? 1 : 0);
+  const columnCount = (isAdmin ? 1 : 0) + 1 + 1 + 1 + (isAdmin ? 1 : 0) + 1 + 1 + (isAdmin ? 1 : 0);
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
@@ -303,7 +294,7 @@ const ContactTableOne: React.FC = () => {
               <th scope="col" className="px-3 py-2">
                 Notes
               </th>
-              {canGenerateProposal && (
+              {isAdmin && (
                 <th scope="col" className="px-3 py-2">
                   Action
                 </th>
@@ -409,7 +400,7 @@ const ContactTableOne: React.FC = () => {
                       {contact.notes || "No notes"}
                     </div>
                   </td>
-                  {canGenerateProposal && (
+                  {isAdmin && (
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap">
                         {isAdmin && (
@@ -420,16 +411,6 @@ const ContactTableOne: React.FC = () => {
                           >
                             <EditIcon />
                           </Link>
-                        )}
-                        {canGenerateProposal && (
-                          <button
-                            type="button"
-                            onClick={() => handleProposalOpen(contact)}
-                            className="text-white bg-gray-900 hover:bg-black focus:ring-4 focus:ring-gray-300 font-medium rounded-lg text-sm px-2.5 py-2.5 me-2 mb-2 dark:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none dark:focus:ring-gray-700"
-                            title="Generate Proposal"
-                          >
-                            <InvoiceIcon />
-                          </button>
                         )}
                       </div>
                     </td>
@@ -460,16 +441,6 @@ const ContactTableOne: React.FC = () => {
         )}
         {modalType === "assignContacts" && (
           <AssignContactsForm selectedContacts={selectedContacts} onClose={handleFormSubmit} />
-        )}
-        {modalType === "proposal" && selectedProposalContact && (
-          <GenerateProposalForm
-            contact={selectedProposalContact}
-            onClose={() => {
-              setSelectedProposalContact(null);
-              setModalType(null);
-              closeModal();
-            }}
-          />
         )}
       </Modal>
     </div>

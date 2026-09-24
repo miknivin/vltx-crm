@@ -1,34 +1,43 @@
-import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/app/lib/db/connection';
-import Stage from '@/app/models/Stage';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/app/lib/db/prisma";
 
-export async function GET(req: NextRequest, context: { params: Promise<{ pipelineId: string }> }) {
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ pipelineId: string }> }
+) {
   try {
-    await dbConnect();
-    
-    const { pipelineId } = await context.params; // Await the Promise to get the params object
+    const { pipelineId } = await context.params;
 
     if (!pipelineId) {
-      return NextResponse.json({
-        success: false,
-        message: 'Pipeline ID is required',
-      }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: "Pipeline ID is required" },
+        { status: 400 }
+      );
     }
 
-    const stages = await Stage.find({ pipeline_id: pipelineId })
-      .select('name order isSuccess')
-      .sort({ order: 1 })
-      .lean();
+    const stages = await prisma.stage.findMany({
+      where: { pipelineId },
+      select: { id: true, name: true, order: true, isSuccess: true },
+      orderBy: { order: "asc" },
+    });
 
-    return NextResponse.json({
-      success: true,
-      data: stages,
-    }, { status: 200 });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    return NextResponse.json({
-      success: false,
-      message: error.message || 'Failed to fetch stages',
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: true,
+        data: stages.map((stage) => ({
+          _id: stage.id,
+          name: stage.name,
+          order: stage.order,
+          isSuccess: stage.isSuccess,
+        })),
+      },
+      { status: 200 }
+    );
+  } catch (error: unknown) {
+    console.error("Error fetching stages:", error);
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch stages" },
+      { status: 500 }
+    );
   }
 }

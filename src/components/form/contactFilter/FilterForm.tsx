@@ -10,8 +10,12 @@ import SourceFilter from "./elements/SourceFilter";
 import UserAssignmentFilter from "./elements/UserAssignmentFilter";
 import FilterActions from "./elements/FilterActions";
 import DateRangePickerUi from "@/components/ui/date/DateRangePicker";
-import { IUser } from "@/app/models/User";
-import ActivityFilter from "./elements/ActivityFilter";
+import type { IUser } from "@/app/types/user";
+import AssetFilters, {
+  EMPTY_ASSET_FILTERS,
+  toFilterPayload,
+  type AssetFilterState,
+} from "./elements/AssetFilters";
 
 interface ContactOffCanvasProps {
   isOpen: boolean;
@@ -26,7 +30,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
   const [keyword, setKeyword] = useState("");
   const [source, setSource] = useState("");
   
-  const [selectedActivities, setSelectedActivities] = useState<{ value: string; isNot: boolean }[]>([]);
+  const [assetFilters, setAssetFilters] = useState<AssetFilterState>(EMPTY_ASSET_FILTERS);
   const [assignedTo, setAssignedTo] = useState<{ userId: string; isNot: boolean }[]>([]);
   const [stage, setStage] = useState("");
   const [startDate, setStartDate] = useState<string | null>(null);
@@ -55,8 +59,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
       createdAt?: { startDate: string; endDate: string };
       updatedAt?: { startDate: string; endDate: string };
       stage?: string;
-      activities?: { value: string; isNot: boolean }[];
-    } = {};
+    } & Partial<AssetFilterState> = {};
     try {
       if (filterStr) filter = JSON.parse(filterStr);
     } catch (e) {
@@ -65,10 +68,16 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
 
     setKeyword(keyword);
     setSource(sourceParam);
-    if (filter.activities && !hasUserInteracted) {
-      setSelectedActivities(filter.activities);
-    }
     setStage(stageParam);
+
+    // Rehydrate the asset filters from the URL so a shared or bookmarked
+    // filtered view reopens the drawer showing what is actually applied.
+    setAssetFilters({
+      ...EMPTY_ASSET_FILTERS,
+      ...Object.fromEntries(
+        Object.entries(filter).filter(([key]) => key in EMPTY_ASSET_FILTERS)
+      ),
+    } as AssetFilterState);
 
     if (filter.createdAt) {
       setStartDate(filter.createdAt.startDate);
@@ -94,7 +103,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
         updatedAt: { startDate: updatedAtStartDate, endDate: updatedAtEndDate },
       }),
       ...(stage && { stage }),
-      ...(selectedActivities.length > 0 && { activities: selectedActivities }),
+      ...toFilterPayload(assetFilters),
     };
 
     const query = new URLSearchParams();
@@ -115,7 +124,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
   const handleClear = () => {
     setKeyword("");
     setSource("");
-    setSelectedActivities([]);
+    setAssetFilters(EMPTY_ASSET_FILTERS);
     setStage("");
     setAssignedTo([]);
     setStartDate(null);
@@ -168,7 +177,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
       >
         <div className="flex justify-between items-center mb-4">
           <h5 className="text-base font-semibold text-gray-500 dark:text-gray-400">
-            Contact Filters
+            Enquiry Filters
           </h5>
           <button
             onClick={onClose}
@@ -210,9 +219,9 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
 
           <SourceFilter value={source} onChange={setSource} disabled={isSubmitting} />
 
-          <ActivityFilter
-            selectedActivities={selectedActivities}
-            onSelectedActivitiesChange={setSelectedActivities}
+          <AssetFilters
+            value={assetFilters}
+            onChange={setAssetFilters}
             disabled={isSubmitting}
           />
 

@@ -1,8 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
-import dbConnect from "@/app/lib/db/connection";
-import User from "@/app/models/User";
+import type { Prisma } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
 import { isAuthenticatedUser } from "@/app/api/middlewares/auth";
+import { serializeUser } from "@/app/lib/auth/serializeUser";
 
 interface UpdateProfileBody {
   name?: string;
@@ -12,31 +12,37 @@ interface UpdateProfileBody {
 
 export async function PUT(req: NextRequest) {
   try {
-    await dbConnect();
     const currentUser = await isAuthenticatedUser(req);
 
     const body = (await req.json()) as UpdateProfileBody;
-    const update: UpdateProfileBody = {};
+    const data: Prisma.UserUpdateInput = {};
 
-    if (body.name !== undefined) update.name = body.name.trim();
-    if (body.phone !== undefined) update.phone = body.phone.trim();
-    if (body.avatar !== undefined) update.avatar = body.avatar;
+    if (body.name !== undefined) data.name = body.name.trim();
+    if (body.phone !== undefined) data.phone = body.phone.trim();
+    if (body.avatar !== undefined) {
+      data.avatarPublicId = body.avatar.public_id;
+      data.avatarUrl = body.avatar.url;
+    }
 
-    const updatedUser = await User.findByIdAndUpdate(
-      currentUser._id,
-      { $set: update },
-      { new: true, runValidators: true }
-    );
+    const updatedUser = await prisma.user.update({
+      where: { id: currentUser.id },
+      data,
+    });
 
     return NextResponse.json(
-      { success: true, message: "Profile updated successfully", user: updatedUser },
+      {
+        success: true,
+        message: "Profile updated successfully",
+        user: serializeUser(updatedUser),
+      },
       { status: 200 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to update profile";
     console.error("Error updating profile:", error);
-    if (error.message?.includes("login") || error.message?.includes("not found")) {
-      return NextResponse.json({ message: error.message }, { status: 401 });
+    if (message.includes("login") || message.includes("not found")) {
+      return NextResponse.json({ message }, { status: 401 });
     }
-    return NextResponse.json({ message: error.message || "Failed to update profile" }, { status: 500 });
+    return NextResponse.json({ message: "Failed to update profile" }, { status: 500 });
   }
 }

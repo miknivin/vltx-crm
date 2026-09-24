@@ -1,75 +1,71 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-expressions */
 import { NextRequest, NextResponse } from "next/server";
-import mongoose, { Types } from "mongoose";
-
+import prisma from "@/app/lib/db/prisma";
 import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
-import { logContactActivity } from "@/app/api/utils/activityLog";
-import dbConnect from "@/app/lib/db/connection";
-import Contact from "@/app/models/Contact";
-import Pipeline from "@/app/models/Pipeline"; // Registers "Pipeline" — required by Contact's pre-save hook
-import Stage from "@/app/models/Stage"; // Registers "Stage" — required by Contact's pre-save hook
 
 export async function POST(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-    Pipeline
-    Stage
     const user = await isAuthenticatedUser(req);
     authorizeRoles(user, "admin", "team_member");
-    const userId = user._id?.toString();
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user data" }, { status: 401 });
-    }
 
     const { id } = await context.params;
-    if (!Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ error: "Invalid contact ID" }, { status: 400 });
-    }
-
     const body = await req.json();
+
     if (!body.text || typeof body.text !== "string" || !body.text.trim()) {
       return NextResponse.json({ error: "Remark text is required" }, { status: 400 });
     }
 
-    const remark = {
-      text: body.text.trim(),
-      createdBy: new Types.ObjectId(userId),
-      createdAt: new Date(),
-    };
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
-        const contact = await Contact.findById(id).session(session);
-        if (!contact) {
-          throw new Error("Contact not found");
-        }
+    const text = body.text.trim();
 
-        contact.remarks.push(remark);
-        await contact.save({ session });
-
-        await logContactActivity({
-          contactId: contact._id,
-          event: "REMARK_ADDED",
-          description: "Remark added",
-          performedBy: userId,
-          metadata: { text: remark.text },
-          session,
-        });
+    const remark = await prisma.$transaction(async (tx) => {
+      const created = await tx.enquiryRemark.create({
+        data: { enquiryId: id, text, createdById: user.id },
+        include: { createdBy: { select: { id: true, name: true, email: true } } },
       });
-    } finally {
-      await session.endSession();
-    }
 
-    return NextResponse.json({ message: "Remark added successfully", remark }, { status: 201 });
-  } catch (error: any) {
-    console.error("Error adding remark:", error);
+      await tx.enquiryActivity.create({
+        data: {
+          enquiryId: id,
+          userId: user.id,
+          action: "REMARK_ADDED",
+          details: { text },
+        },
+      });
+
+      return created;
+    });
+
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      { status: error.message === "Contact not found" ? 404 : 500 }
+      {
+        message: "Remark added successfully",
+        remark: {
+          _id: remark.id,
+          text: remark.text,
+          createdAt: remark.createdAt,
+          createdBy: remark.createdBy
+            ? {
+                _id: remark.createdBy.id,
+                name: remark.createdBy.name,
+                email: remark.createdBy.email,
+              }
+            : null,
+        },
+      },
+      { status: 201 }
     );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    // A remark for an enquiry that no longer exists fails the foreign key
+    // rather than silently creating an orphan row.
+    if (message.includes("Foreign key") || message.includes("P2003")) {
+      return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
+    }
+    if (message.includes("login") || message.includes("Not allowed")) {
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
+    console.error("Error adding remark:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,124 +1,118 @@
-import { NextRequest, NextResponse } from 'next/server';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import Contact, { IContact } from '@/app/models/Contact';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import Pipeline from '@/app/models/Pipeline'; // Registers "Pipeline" — required by Contact's pre-save hook
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import Stage from '@/app/models/Stage'; // Registers "Stage" — required by Contact's pre-save hook
-
-import mongoose from 'mongoose';
-import dbConnect from '@/app/lib/db/connection';
-import { validateUpdatePipelineRequest } from '../../middlewares/validateContactUpdate';
-import { logContactActivity } from '../../utils/activityLog';
-import { getPipelineStageNameMap } from '@/app/lib/utils/pipelineStageNames';
+import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
+import { isAuthenticatedUser, authorizeRoles } from "../../middlewares/auth";
 
 interface UpdatePipelineRequest {
   contactIds: string[];
   pipelineId: string;
   stageId: string;
-  userId: string; // The user performing the action
 }
 
+/// Moves a set of enquiries onto a pipeline stage in bulk — used by the list
+/// view's "add to pipeline" action, as opposed to the board's drag handler.
 export async function PATCH(req: NextRequest) {
   try {
-    await dbConnect();
+    const user = await isAuthenticatedUser(req);
+    authorizeRoles(user, "admin", "team_member");
 
     const body: UpdatePipelineRequest = await req.json();
-    const validationResult = await validateUpdatePipelineRequest(body);
+    const { contactIds, pipelineId, stageId } = body;
 
-    // If validation fails, return the error response
-    if (!validationResult.success) {
-      return validationResult.response;
+    if (!Array.isArray(contactIds) || contactIds.length === 0) {
+      return NextResponse.json(
+        { error: "contactIds must be a non-empty array" },
+        { status: 400 }
+      );
+    }
+    if (!pipelineId || !stageId) {
+      return NextResponse.json(
+        { error: "pipelineId and stageId are required" },
+        { status: 400 }
+      );
     }
 
-    const { contacts } = validationResult;
-    const { pipelineId, stageId, userId } = body;
+    const [pipeline, stage, enquiries] = await Promise.all([
+      prisma.pipeline.findUnique({
+        where: { id: pipelineId },
+        select: { id: true, name: true },
+      }),
+      prisma.stage.findFirst({
+        where: { id: stageId, pipelineId },
+        select: { id: true, name: true, probability: true },
+      }),
+      prisma.enquiry.findMany({
+        where: { id: { in: contactIds } },
+        select: {
+          id: true,
+          pipelineEntries: {
+            where: { pipelineId },
+            select: { id: true, stage: { select: { name: true } } },
+          },
+        },
+      }),
+    ]);
 
-    // Update each contact's pipelinesActive array
-    const updatedContacts: IContact[] = [];
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
-        if (contacts) {
-          const oldStageIds = contacts
-            .map((contact) =>
-              contact.pipelinesActive.find(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (pa: any) => pa.pipeline_id.toString() === pipelineId
-              )?.stage_id?.toString()
-            )
-            .filter((id): id is string => Boolean(id));
-
-          const { getPipelineName, getStageName } = await getPipelineStageNameMap(
-            [pipelineId],
-            [stageId, ...oldStageIds]
-          );
-
-          for (const contact of contacts) {
-            const existingPipeline = contact.pipelinesActive.find(
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (pa:any) => pa.pipeline_id.toString() === pipelineId
-            );
-
-            if (existingPipeline) {
-              // Update existing pipeline entry
-              const oldStageId = existingPipeline.stage_id?.toString();
-              existingPipeline.stage_id = new mongoose.Types.ObjectId(stageId);
-              await contact.logActivity('PIPELINE_STAGE_UPDATED', new mongoose.Types.ObjectId(userId), {
-                pipelineName: getPipelineName(pipelineId),
-                oldStageName: getStageName(oldStageId),
-                newStageName: getStageName(stageId),
-              }, session);
-              await logContactActivity({
-                contactId: contact._id,
-                event: 'PIPELINE_STAGE_CHANGED',
-                description: 'Pipeline stage changed',
-                performedBy: userId,
-                metadata: {
-                  pipelineName: getPipelineName(pipelineId),
-                  oldStageName: getStageName(oldStageId),
-                  newStageName: getStageName(stageId),
-                },
-                session,
-              });
-            } else {
-              // Add new pipeline entry
-              contact.pipelinesActive.push({
-                pipeline_id: new mongoose.Types.ObjectId(pipelineId),
-                stage_id: new mongoose.Types.ObjectId(stageId),
-              });
-              await contact.logActivity('PIPELINE_ADDED', new mongoose.Types.ObjectId(userId), {
-                pipelineName: getPipelineName(pipelineId),
-                stageName: getStageName(stageId),
-              }, session);
-            }
-
-            const updatedContact = await contact.save({ session });
-            updatedContacts.push(updatedContact);
-          }
-        }
-      });
-    } finally {
-      await session.endSession();
+    if (!pipeline) {
+      return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
+    }
+    if (!stage) {
+      return NextResponse.json(
+        { error: "Stage not found or does not belong to the pipeline" },
+        { status: 404 }
+      );
+    }
+    if (enquiries.length !== new Set(contactIds).size) {
+      return NextResponse.json(
+        { error: "One or more enquiries not found" },
+        { status: 404 }
+      );
     }
 
+    await prisma.$transaction(async (tx) => {
+      const activities: Prisma.EnquiryActivityCreateManyInput[] = [];
+
+      for (const enquiry of enquiries) {
+        const existing = enquiry.pipelineEntries[0];
+
+        await tx.pipelineEntry.upsert({
+          where: { enquiryId_pipelineId: { enquiryId: enquiry.id, pipelineId } },
+          update: { stageId: stage.id },
+          create: { enquiryId: enquiry.id, pipelineId, stageId: stage.id, order: 0 },
+        });
+
+        await tx.enquiry.update({
+          where: { id: enquiry.id },
+          data: { probability: stage.probability },
+        });
+
+        activities.push({
+          enquiryId: enquiry.id,
+          userId: user.id,
+          action: existing ? "PIPELINE_STAGE_UPDATED" : "PIPELINE_ADDED",
+          details: {
+            pipelineName: pipeline.name,
+            ...(existing
+              ? { oldStageName: existing.stage.name, newStageName: stage.name }
+              : { stageName: stage.name }),
+          },
+        });
+      }
+
+      await tx.enquiryActivity.createMany({ data: activities });
+    });
 
     return NextResponse.json(
-      {
-        success: true,
-        message: 'Contacts updated successfully',
-        data: updatedContacts,
-      },
+      { success: true, updated: enquiries.length },
       { status: 200 }
     );
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const unauthorized = message.includes("login") || message.includes("Not allowed");
+    if (!unauthorized) console.error("Error updating enquiry pipeline:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: error.message || 'Failed to update contacts',
-      },
-      { status: 500 }
+      { error: unauthorized ? message : "Internal server error" },
+      { status: unauthorized ? 401 : 500 }
     );
   }
 }

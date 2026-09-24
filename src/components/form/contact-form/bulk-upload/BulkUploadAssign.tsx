@@ -3,7 +3,7 @@
 
 import Button from "@/components/ui/button/Button";
 import { useState } from "react";
-import { IUser } from "@/app/models/User";
+import type { IUser } from "@/app/types/user";
 import Chip from "@/components/ui/chips/Chip";
 import ShortSpinnerDark from "@/components/ui/loaders/ShortSpinnerDark";
 import VeryShortSpinnerPrimary from "@/components/ui/loaders/veryShortSpinnerPrimary";

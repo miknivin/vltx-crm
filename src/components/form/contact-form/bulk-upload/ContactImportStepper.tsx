@@ -6,9 +6,9 @@ import BulkUploadComponent from './BulkUploadComponent';
 import FieldMapper from './FieldMapper';
 import BulkUploadAssign from './BulkUploadAssign';
 import { useGetTeamMembersQuery } from '@/app/redux/api/userApi';
-import { IContact } from '@/app/models/Contact';
+import type { IContact } from "@/app/types/enquiry";
 import { toast } from 'react-toastify';
-import { IUser } from '@/app/models/User';
+import type { IUser } from "@/app/types/user";
 import { useBulkImportContactsMutation, useCheckContactDuplicatesMutation } from "@/app/redux/api/contactApi";
 import { validateContacts } from "./helpers/validateContacts";
 
@@ -20,12 +20,17 @@ interface ParsedContact {
   [key: string]: string | boolean;
 }
 
+/// One spreadsheet row with its columns renamed to enquiry fields. The values
+/// stay as the raw cell text — `/api/contacts/bulk` parses them, because a
+/// cell is always a string while the columns it feeds are numbers and enums.
+type MappedRow = Partial<Record<keyof IContact, string>>;
+
 export interface DuplicateCheckResult {
   totalContacts: number;
   duplicateCount: number;
   newCount: number;
-  duplicates: { email: string; name: string; phone: string }[];
-  newContacts: { email: string; name: string; phone: string }[];
+  duplicates: { email: string | null; name: string | null; phone: string }[];
+  newContacts: { email: string | null; name: string | null; phone: string }[];
 }
 const steps = [
   { title: 'Map Fields', description: 'Map CSV/Excel headers to contact fields' },
@@ -122,23 +127,23 @@ export default function ContactImportStepper({ onClose }: ContactImportStepperPr
   // Validate and proceed to the next step
   const handleNext = async () => {
     if (activeStep === 0) {
-      const requiredFields = ['name', 'email', 'phone'];
+      const requiredFields = ['name', 'phone', 'category'];
       const mappedFields = Object.values(fieldMappings);
       const hasRequiredFields = requiredFields.every((field) =>
         mappedFields.includes(field as keyof IContact)
       );
 
       if (!hasRequiredFields) {
-        toast.error('Please map the required fields: Name, Email and Phone');
+        toast.error('Please map the required fields: Name, Mobile and Asset Category');
         return;
       }
 
       // Prepare contacts for duplicate check
       const contactsToCheck = parsedContacts.map((contact) => {
-        const mappedContact: Partial<IContact> = {};
+        const mappedContact: MappedRow = {};
         Object.entries(fieldMappings).forEach(([header, field]) => {
           if (field && contact[header]) {
-            mappedContact[field] = contact[header];
+            mappedContact[field] = String(contact[header]);
           }
         });
         return mappedContact;
@@ -147,17 +152,17 @@ export default function ContactImportStepper({ onClose }: ContactImportStepperPr
       try {
         const result = await checkContactDuplicates({ contacts: contactsToCheck }).unwrap();
         // Update parsedContacts with isDuplicate field
+        // Match on mobile, which is what the server dedupes on — and compare
+        // digits only, so "+91 96332 26916" and "9633226916" are one person.
+        const phoneHeader = Object.keys(fieldMappings).find(
+          (header) => fieldMappings[header] === "phone"
+        );
+        const digits = (value: unknown) => String(value ?? "").replace(/\D/g, "").slice(-10);
+        const duplicateMobiles = new Set(result.duplicates.map((dup) => digits(dup.phone)));
+
         const updatedContacts = parsedContacts.map((contact) => {
-          const isDuplicate = result.duplicates.some(
-            (dup) => {
-              const contactEmail = contact[fieldMappings.email];
-              return (
-                typeof contactEmail === "string" &&
-                dup.email.toLowerCase() === contactEmail.toLowerCase()
-              );
-            }
-          );
-          return { ...contact, isDuplicate };
+          const mobile = phoneHeader ? digits(contact[phoneHeader]) : "";
+          return { ...contact, isDuplicate: mobile.length === 10 && duplicateMobiles.has(mobile) };
         });
         setParsedContacts(updatedContacts);
         setDuplicateCheckResult(result);
@@ -187,10 +192,10 @@ export default function ContactImportStepper({ onClose }: ContactImportStepperPr
 
      const payload = {
       contacts: parsedContacts.map((contact) => {
-        const mappedContact: Partial<IContact> & { isDuplicate?: boolean } = {};
+        const mappedContact: MappedRow & { isDuplicate?: boolean } = {};
         Object.entries(fieldMappings).forEach(([header, field]) => {
           if (field && contact[header]) {
-            mappedContact[field] = contact[header];
+            mappedContact[field] = String(contact[header]);
           }
         });
         mappedContact.isDuplicate = Boolean(contact.isDuplicate);

@@ -2,7 +2,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import PipelineBody from "@/components/pipeline";
 import { Metadata } from "next";
 import React from "react";
-import mongoose from "mongoose";
+import { isValidId } from "@/app/types/enquiry";
 import { notFound } from "next/navigation";
 import { getAppMetaTitle } from "@/app/lib/utils/metadata";
 
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 export default async function Pipelines({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params; 
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
+  if (!isValidId(id)) {
     notFound();
   }
 

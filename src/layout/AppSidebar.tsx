@@ -6,10 +6,8 @@ import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import {
   BoxCubeIcon,
-  CalenderIcon,
   ChevronDownIcon,
   GridIcon,
-  // ListIcon,
   PieChartIcon,
   PlugInIcon,
   TableIcon,
@@ -18,10 +16,8 @@ import {
 import UsersIcon from "@/components/ui/flowbiteIcons/Users";
 import { useSelector } from "react-redux";
 import { RootState } from "@/app/redux/rootReducer";
-import ServicesIcon from "@/components/ui/flowbiteIcons/ServicesIcon";
 import { LOGO_SRC } from "@/app/lib/utils/logo";
 import TaskIcon from "@/components/ui/flowbiteIcons/TaskIcon";
-import InvoiceIcon from "@/components/ui/flowbiteIcons/InvoiceIcon";
 import SettingsIcon from "@/components/ui/flowbiteIcons/SettingsIcon";
 
 type NavItem = {
@@ -38,21 +34,10 @@ const getNavItems = (isMobile: boolean): NavItem[] => [
     path: "/",
   },
   {
-    icon: <CalenderIcon />,
-    name: "Calendar",
-    path: "/calendar",
-  },
-  {
     icon: <UserCircleIcon />,
-    name: "Contacts",
+    name: "Enquiries",
     path: "/contacts",
   },
-
-  // {
-  //   name: "Leave",
-  //   icon: <ListIcon />,
-  //   path: "/leave-management",
-  // },
   {
     name: "Pipelines",
     icon: <TableIcon />,
@@ -67,16 +52,6 @@ const getNavItems = (isMobile: boolean): NavItem[] => [
     icon: <UsersIcon />,
     name: "Users",
     path: "/users",
-  },
-    {
-    name: "Services",
-    icon: <ServicesIcon />,
-    path: "/services",
-  },
-  {
-    name: "Invoices",
-    icon: <InvoiceIcon className="h-5 w-5" />,
-    path: "/invoices",
   },
   {
     name: "Settings",
@@ -137,7 +112,7 @@ const AppSidebar: React.FC = () => {
 
   const filteredNavItems = navItems.filter((item) => {
     if (user?.role === "user") {
-      return ["Calendar", "Leave", "Settings"].includes(item.name);
+      return ["Settings"].includes(item.name);
     }
     if (user?.role === "team_member") {
       return item.name !== "Users"; // Hide "Users" for team_member

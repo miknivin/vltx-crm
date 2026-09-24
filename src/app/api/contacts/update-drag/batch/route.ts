@@ -1,14 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
-import mongoose, { Types } from "mongoose";
-
+import type { Prisma } from "@prisma/client";
+import prisma from "@/app/lib/db/prisma";
 import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
-import { logContactActivity } from "@/app/api/utils/activityLog";
-import { getPipelineStageNameMap } from "@/app/lib/utils/pipelineStageNames";
-import dbConnect from "@/app/lib/db/connection";
-import Contact from "@/app/models/Contact";
-
-import { BatchUpdateItem, validateBatchUpdates } from "./validation";
+import { BatchUpdateItem, entryKey, validateBatchUpdates } from "./validation";
 
 interface BatchUpdateRequest {
   updates: BatchUpdateItem[];
@@ -17,13 +11,7 @@ interface BatchUpdateRequest {
 export async function PATCH(req: NextRequest) {
   try {
     const user = await isAuthenticatedUser(req);
-    const userId = user._id?.toString();
-    if (!userId) {
-      return NextResponse.json({ error: "Invalid user data" }, { status: 401 });
-    }
     authorizeRoles(user, "admin", "team_member");
-
-    await dbConnect();
 
     let body: BatchUpdateRequest;
     try {
@@ -33,96 +21,88 @@ export async function PATCH(req: NextRequest) {
     }
 
     const updates = body.updates ?? [];
-    const { contactMap } = await validateBatchUpdates(updates);
+    const { entries, stageNames, pipelineNames } = await validateBatchUpdates(updates);
 
-    // Every contact on the board already has a pipelinesActive entry for
-    // this pipeline (that's how it got fetched onto the board), so this is
-    // always a same-pipeline stage move — one atomic array-element update,
-    // no branching on whether the entry exists.
-    const bulkOps: any[] = updates.map(({ contactId, pipelineId, stageId, order }) => ({
-      updateOne: {
-        filter: { _id: new Types.ObjectId(contactId) },
-        update: {
-          $set: {
-            "pipelinesActive.$[elem].stage_id": new Types.ObjectId(stageId),
-            "pipelinesActive.$[elem].order": order,
+    // The drag-sync worker on the frontend coalesces rapid moves and flushes
+    // a backlog after coming back online, so this is a batch even though the
+    // common case is a single card.
+    await prisma.$transaction(async (tx) => {
+      const activities: Prisma.EnquiryActivityCreateManyInput[] = [];
+
+      for (const update of updates) {
+        const existing = entries.get(entryKey(update.contactId, update.pipelineId))!;
+
+        await tx.pipelineEntry.update({
+          where: { id: existing.id },
+          data: { stageId: update.stageId, order: update.order },
+        });
+
+        if (existing.stageId === update.stageId) continue;
+
+        // Reordering within a column is not a stage change, so only a real
+        // move between columns earns a timeline entry.
+        activities.push({
+          enquiryId: update.contactId,
+          userId: user.id,
+          action: "PIPELINE_STAGE_UPDATED",
+          details: {
+            pipelineName: pipelineNames.get(update.pipelineId) ?? update.pipelineId,
+            oldStageName: existing.stageName,
+            newStageName: stageNames.get(update.stageId) ?? update.stageId,
+            order: update.order,
+            updatedBy: user.name,
           },
-          $currentDate: { updatedAt: true },
-        },
-        arrayFilters: [{ "elem.pipeline_id": new Types.ObjectId(pipelineId) }],
-      },
-    }));
+        });
+      }
 
-    const session = await mongoose.startSession();
-    try {
-      await session.withTransaction(async () => {
-        // bulkWrite with one op costs the same as a single updateOne — kept
-        // as a batch because the drag-sync worker on the frontend can
-        // legitimately flush several queued moves in one request (rapid
-        // drags coalesced within its debounce window, or a backlog flushed
-        // after coming back online), not just the common single-card case.
-        await Contact.bulkWrite(bulkOps, { ordered: false, session });
+      const movedStages = updates.filter(
+        (update) =>
+          entries.get(entryKey(update.contactId, update.pipelineId))!.stageId !==
+          update.stageId
+      );
 
-        const { getPipelineName, getStageName } = await getPipelineStageNameMap(
-          updates.map((update) => update.pipelineId),
-          updates.flatMap((update) => [
-            update.stageId,
-            contactMap
-              .get(update.contactId)
-              ?.pipelinesActive?.find((pa: any) => pa.pipeline_id?.toString() === update.pipelineId)?.stage_id?.toString(),
-          ])
+      if (movedStages.length) {
+        const stageProbabilities = await tx.stage.findMany({
+          where: { id: { in: movedStages.map((update) => update.stageId) } },
+          select: { id: true, probability: true },
+        });
+        const probabilityByStage = new Map(
+          stageProbabilities.map((stage) => [stage.id, stage.probability])
         );
 
         await Promise.all(
-          updates.map((update) => {
-            const oldStageId = contactMap
-              .get(update.contactId)
-              ?.pipelinesActive?.find((pa: any) => pa.pipeline_id?.toString() === update.pipelineId)?.stage_id?.toString();
-
-            if (oldStageId === update.stageId) return Promise.resolve();
-
-            return logContactActivity({
-              contactId: update.contactId,
-              event: "PIPELINE_STAGE_CHANGED",
-              description: "Pipeline stage changed",
-              performedBy: userId,
-              metadata: {
-                pipelineName: getPipelineName(update.pipelineId),
-                oldStageName: getStageName(oldStageId),
-                newStageName: getStageName(update.stageId),
-                order: update.order,
-                updatedBy: user.name,
-              },
-              session,
-            });
-          })
+          movedStages.map((update) =>
+            tx.enquiry.update({
+              where: { id: update.contactId },
+              data: { probability: probabilityByStage.get(update.stageId) ?? undefined },
+            })
+          )
         );
-      });
-    } finally {
-      await session.endSession();
-    }
+      }
 
-    return NextResponse.json({ success: true, updated: bulkOps.length });
-  } catch (error: any) {
-    console.error("Error updating contacts pipeline:", error);
+      if (activities.length) {
+        await tx.enquiryActivity.createMany({ data: activities });
+      }
+    });
 
-    if (error.name === "MongoServerError" && error.code === 11000) {
-      return NextResponse.json(
-        { error: `Duplicate key error for contact _id: ${error.keyValue?._id || "unknown"}` },
-        { status: 400 }
-      );
-    }
+    return NextResponse.json({ success: true, updated: updates.length });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    console.error("Error updating enquiry board positions:", error);
+
+    const status =
+      message.includes("login") || message.includes("Not allowed")
+        ? 401
+        : message.includes("not on pipeline") ||
+            message.includes("does not belong") ||
+            message.includes("must be") ||
+            message.includes("Invalid")
+          ? 400
+          : 500;
 
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
-      {
-        status:
-          error.message?.includes("login") || error.message?.includes("Not allowed")
-            ? 401
-            : error.message?.includes("not found") || error.message?.includes("Invalid") || error.message?.includes("does not belong")
-              ? 400
-              : 500,
-      }
+      { error: status === 500 ? "Internal server error" : message },
+      { status }
     );
   }
 }

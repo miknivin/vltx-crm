@@ -1,112 +1,76 @@
-/* eslint-disable @typescript-eslint/no-unused-expressions */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest, NextResponse } from 'next/server';
-import  { Types } from 'mongoose';
-import Contact from '@/app/models/Contact';
-import dbConnect from '@/app/lib/db/connection';
-import { authorizeRoles, isAuthenticatedUser } from '@/app/api/middlewares/auth';
-import Pipeline from '@/app/models/Pipeline';
-import Stage from '@/app/models/Stage';
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/app/lib/db/prisma";
+import { authorizeRoles, isAuthenticatedUser } from "@/app/api/middlewares/auth";
 
-// Interface for request body
 interface UpdateProbabilityRequest {
   probability: number;
 }
 
-// PATCH handler to update contact probability
 export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Connect to database
-    Pipeline
-    Stage
-    await dbConnect();
+    const user = await isAuthenticatedUser(request);
+    authorizeRoles(user, "admin", "team_member");
 
-    // Authenticate user and authorize roles
-    let user;
-    try {
-      user = await isAuthenticatedUser(request);
-    } catch (error: any) {
-      return NextResponse.json(
-        { success: false, error: error.message || 'Authentication failed' },
-        { status: 401 }
-      );
-    }
-
-    if (!user._id) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid user data' },
-        { status: 401 }
-      );
-    }
-
-    authorizeRoles(user, 'admin', 'team_member');
-
-    // Extract and await params
     const { id } = await context.params;
+    const { probability } = (await request.json()) as UpdateProbabilityRequest;
 
-    // Validate ID
-    if (!id || !Types.ObjectId.isValid(id)) {
+    if (typeof probability !== "number" || probability < 0 || probability > 100) {
       return NextResponse.json(
-        { success: false, error: 'Invalid or missing contact ID' },
+        { success: false, error: "Probability must be a number between 0 and 100" },
         { status: 400 }
       );
     }
 
-    const { probability } = await request.json() as UpdateProbabilityRequest;
+    const existing = await prisma.enquiry.findUnique({
+      where: { id },
+      select: { probability: true },
+    });
 
-    // Validate probability
-    if (typeof probability !== 'number' || probability < 0 || probability > 100) {
+    if (!existing) {
       return NextResponse.json(
-        { success: false, error: 'Probability must be a number between 0 and 100' },
-        { status: 400 }
-      );
-    }
-
-    // Find and update contact
-    const contact = await Contact.findById(id);
-    if (!contact) {
-      return NextResponse.json(
-        { success: false, error: 'Contact not found' },
+        { success: false, error: "Enquiry not found" },
         { status: 404 }
       );
     }
 
-    // Store old probability for logging
-    const oldProbability = contact.probability;
+    const updated = await prisma.$transaction(async (tx) => {
+      const enquiry = await tx.enquiry.update({
+        where: { id },
+        data: { probability },
+        select: { id: true, probability: true },
+      });
 
-    // Update probability
-    contact.probability = probability;
+      await tx.enquiryActivity.create({
+        data: {
+          enquiryId: id,
+          userId: user.id,
+          action: "ENQUIRY_UPDATED",
+          details: {
+            field: "probability",
+            oldValue: existing.probability,
+            newValue: probability,
+          },
+        },
+      });
 
-    // Log activity
-    await contact.logActivity(
-      'CONTACT_UPDATED',
-      new Types.ObjectId(user._id),
-      {
-        field: 'probability',
-        oldValue: oldProbability,
-        newValue: probability,
-      }
-    );
-
-    // Save contact
-    await contact.save();
+      return enquiry;
+    });
 
     return NextResponse.json({
       success: true,
-      message: 'Probability updated successfully',
-      contact: {
-        _id: contact._id,
-        probability: contact.probability,
-      },
+      message: "Probability updated successfully",
+      contact: { _id: updated.id, probability: updated.probability },
     });
-  } catch (error: any) {
-    console.error('Error updating contact probability:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    const unauthorized = message.includes("login") || message.includes("Not allowed");
+    if (!unauthorized) console.error("Error updating enquiry probability:", error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Internal server error' },
-      { status: error.message.includes('login') || error.message.includes('Not allowed') ? 401 : 500 }
+      { success: false, error: unauthorized ? message : "Internal server error" },
+      { status: unauthorized ? 401 : 500 }
     );
   }
 }

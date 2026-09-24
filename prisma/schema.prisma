@@ -1,0 +1,498 @@
+// VLTX CRM — PostgreSQL (Neon) schema.
+//
+// Domain: the CRM manages *valuation enquiries* submitted from the VLTX website
+// form. One person may submit several assets over time, so the person
+// (Customer) and the asset submission (Enquiry) are separate rows: the Enquiry
+// is what moves through a pipeline, the Customer is who to call about it.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums — the website form's option lists, pinned into the database so a typo
+// in an API payload fails at the DB boundary rather than becoming a new
+// silently-distinct filter value.
+// ---------------------------------------------------------------------------
+
+enum Role {
+  user
+  employee
+  team_member
+  admin
+}
+
+enum SignupMethod {
+  OTP
+  EmailPassword
+  OAuth
+}
+
+enum AssetCategory {
+  PLATINUM_METAL
+  PLATINUM_JEWELLERY
+  LOOSE_DIAMOND
+  DIAMOND_JEWELLERY
+  PRECIOUS_GEMSTONE
+  GEMSTONE_JEWELLERY
+  LUXURY_WATCH
+  OTHER_LUXURY_ASSET
+}
+
+enum JewelleryType {
+  NECKLACE
+  EARRING
+  BANGLE
+  RINGS
+  PENDANT
+  OTHERS
+}
+
+/// Union of the diamond and gemstone shape lists on the form.
+enum ShapeCut {
+  ROUND_BRILLIANT
+  ROUND
+  PRINCESS
+  CUSHION
+  OVAL
+  EMERALD
+  PEAR
+  MARQUISE
+  OTHER
+}
+
+enum AssetCondition {
+  AS_NEW
+  EXCELLENT
+  GOOD
+  FAIR
+}
+
+enum CertificateLab {
+  GIA
+  IGI
+  HRD
+  OTHERS
+}
+
+enum PreferredContact {
+  CALL
+  WHATSAPP
+  EMAIL
+}
+
+enum EnquiryActivityAction {
+  ENQUIRY_CREATED
+  ENQUIRY_UPDATED
+  TAG_ADDED
+  TAG_REMOVED
+  NOTE_ADDED
+  NOTE_UPDATED
+  REMARK_ADDED
+  PIPELINE_ADDED
+  PIPELINE_REMOVED
+  PIPELINE_STAGE_UPDATED
+  ASSIGNED_TO_UPDATED
+  PHOTO_ADDED
+  VALUATION_RECORDED
+  OFFER_MADE
+}
+
+enum TaskType {
+  contact_linked
+  custom
+}
+
+enum TaskStatus {
+  open
+  in_progress
+  done
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  /// Short staff-facing reference. Sequence-backed rather than the old random
+  /// 6-digit draw, which had no collision check behind it.
+  uid                 Int          @unique @default(autoincrement())
+  name                String?      @db.VarChar(50)
+  email               String       @unique @db.VarChar(255)
+  phone               String       @db.VarChar(20)
+  /// bcrypt hash; never selected by default in the data layer.
+  password            String?
+  avatarPublicId      String?      @map("avatar_public_id")
+  avatarUrl           String?      @map("avatar_url")
+  role                Role         @default(user)
+  signupMethod        SignupMethod @default(EmailPassword) @map("signup_method")
+  resetPasswordToken  String?      @map("reset_password_token")
+  resetPasswordExpire DateTime?    @map("reset_password_expire") @db.Timestamptz(6)
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pipelines         Pipeline[]
+  assignments       EnquiryAssignment[]
+  tags              EnquiryTag[]
+  activities        EnquiryActivity[]
+  remarks           EnquiryRemark[]
+  valuedEnquiries   Enquiry[]                @relation("EnquiryValuedBy")
+  ownedTasks        Task[]                   @relation("TaskOwner")
+  createdTasks      Task[]                   @relation("TaskCreatedBy")
+  taskAssignments   TaskAssignment[]
+  aiSessions        AiReportSession[]
+  aiSessionMessages AiReportSessionMessage[]
+
+  @@index([role])
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// People and their enquiries
+// ---------------------------------------------------------------------------
+
+/// The person behind one or more enquiries. Deduplicated on mobile at intake —
+/// the same seller coming back with a second asset should land on the same row
+/// rather than forking into a parallel contact history.
+model Customer {
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String            @db.VarChar(200)
+  mobile           String            @unique @db.VarChar(20)
+  email            String?           @db.VarChar(255)
+  city             String?           @db.VarChar(120)
+  preferredContact PreferredContact? @map("preferred_contact")
+  notes            String?
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  enquiries Enquiry[]
+
+  @@index([email])
+  @@index([name])
+  @@map("customers")
+}
+
+/// One asset submitted for valuation. This is the record that moves through a
+/// pipeline, carries tags/assignments/activity, and that tasks hang off.
+model Enquiry {
+  id String @id @default(uuid()) @db.Uuid
+  /// Short human-quotable reference shown in the UI and used in AI answers.
+  reference  Int    @unique @default(autoincrement())
+  customerId String @map("customer_id") @db.Uuid
+
+  // --- Asset details, mirroring the website form's per-category schema. ---
+  category      AssetCategory
+  jewelleryType JewelleryType?  @map("jewellery_type")
+  /// Watch brand from the form's list, or free text for "Other Luxury Asset".
+  brand         String?         @db.VarChar(120)
+  metalWeightG  Decimal?        @map("metal_weight_g") @db.Decimal(10, 3)
+  caratWeight   Decimal?        @map("carat_weight") @db.Decimal(10, 3)
+  shapeCut      ShapeCut?       @map("shape_cut")
+  condition     AssetCondition?
+  /// Doubles as "original invoice available" for watches, as the form does.
+  certificateAvailable Boolean?        @map("certificate_available")
+  certificateLab       CertificateLab? @map("certificate_lab")
+  purchaseYear         Int?            @map("purchase_year")
+  description          String?
+
+  // --- Internal valuation workflow. ---
+  /// Team's assessed value, filled in after review — never collected from the
+  /// seller, who is deliberately not asked for an expected value up front.
+  estimatedValue Decimal?  @map("estimated_value") @db.Decimal(14, 2)
+  offeredAmount  Decimal?  @map("offered_amount") @db.Decimal(14, 2)
+  valuedAt       DateTime? @map("valued_at") @db.Timestamptz(6)
+  valuedById     String?   @map("valued_by_id") @db.Uuid
+  probability    Int       @default(50)
+  notes          String?
+  sourceId       String?   @map("source_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  customer        Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  source          Source?             @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  valuedBy        User?               @relation("EnquiryValuedBy", fields: [valuedById], references: [id], onDelete: SetNull)
+  photos          EnquiryPhoto[]
+  assignedTo      EnquiryAssignment[]
+  tags            EnquiryTag[]
+  pipelineEntries PipelineEntry[]
+  activities      EnquiryActivity[]
+  remarks         EnquiryRemark[]
+  tasks           Task[]
+
+  @@index([customerId])
+  @@index([category])
+  @@index([createdAt])
+  @@index([sourceId])
+  @@index([estimatedValue])
+  @@map("enquiries")
+}
+
+model EnquiryPhoto {
+  id        String   @id @default(uuid()) @db.Uuid
+  enquiryId String   @map("enquiry_id") @db.Uuid
+  url       String
+  key       String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+
+  @@index([enquiryId, position])
+  @@map("enquiry_photos")
+}
+
+model Source {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String   @unique @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  enquiries Enquiry[]
+
+  @@map("sources")
+}
+
+model EnquiryAssignment {
+  enquiryId  String   @map("enquiry_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([enquiryId, userId])
+  @@index([userId])
+  @@map("enquiry_assignments")
+}
+
+model EnquiryTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  enquiryId String   @map("enquiry_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String   @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([enquiryId, name])
+  @@index([name])
+  @@map("enquiry_tags")
+}
+
+/// Replaces the Mongo `activities` embedded array. No 500-entry cap or archive
+/// table is needed here — rows are cheap and indexed, which is the whole point
+/// of moving off the embedded-array model.
+model EnquiryActivity {
+  id        String                @id @default(uuid()) @db.Uuid
+  enquiryId String                @map("enquiry_id") @db.Uuid
+  userId    String?               @map("user_id") @db.Uuid
+  action    EnquiryActivityAction
+  details   Json                  @default("{}")
+  createdAt DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  enquiry Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([enquiryId, createdAt])
+  @@index([action])
+  @@map("enquiry_activities")
+}
+
+model EnquiryRemark {
+  id          String   @id @default(uuid()) @db.Uuid
+  enquiryId   String   @map("enquiry_id") @db.Uuid
+  createdById String?  @map("created_by_id") @db.Uuid
+  text        String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  enquiry   Enquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([enquiryId, createdAt])
+  @@map("enquiry_remarks")
+}
+
+// ---------------------------------------------------------------------------
+// Pipelines
+// ---------------------------------------------------------------------------
+
+model Pipeline {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.VarChar(200)
+  notes     String?
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  stages  Stage[]
+  entries PipelineEntry[]
+
+  @@index([userId])
+  @@map("pipelines")
+}
+
+model Stage {
+  id          String   @id @default(uuid()) @db.Uuid
+  pipelineId  String   @map("pipeline_id") @db.Uuid
+  name        String   @db.VarChar(200)
+  order       Int
+  probability Int      @default(50)
+  /// Marks a terminal "won" stage — what the `isConverted` filters test against.
+  isSuccess   Boolean  @default(false) @map("is_success")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pipeline Pipeline        @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  entries  PipelineEntry[]
+
+  @@unique([pipelineId, order])
+  @@index([pipelineId])
+  @@map("stages")
+}
+
+/// Replaces the Mongo `pipelinesActive` embedded array: an enquiry sits in at
+/// most one stage per pipeline, which the composite unique now enforces in the
+/// database instead of in application code.
+model PipelineEntry {
+  id         String   @id @default(uuid()) @db.Uuid
+  enquiryId  String   @map("enquiry_id") @db.Uuid
+  pipelineId String   @map("pipeline_id") @db.Uuid
+  stageId    String   @map("stage_id") @db.Uuid
+  order      Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  enquiry  Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage    Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([enquiryId, pipelineId])
+  @@index([pipelineId, stageId, order])
+  @@index([stageId])
+  @@map("pipeline_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+model Task {
+  id          String       @id @default(uuid()) @db.Uuid
+  title       String       @db.VarChar(255)
+  description String?
+  type        TaskType
+  enquiryId   String?      @map("enquiry_id") @db.Uuid
+  dueDate     DateTime?    @map("due_date") @db.Timestamptz(6)
+  /// HH:mm, kept separate from dueDate so an all-day task stays all-day.
+  dueTime     String?      @map("due_time") @db.VarChar(5)
+  priority    TaskPriority @default(medium)
+  status      TaskStatus   @default(open)
+  ownerId     String       @map("owner_id") @db.Uuid
+  createdById String       @map("created_by_id") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  enquiry    Enquiry?         @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  owner      User             @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  createdBy  User             @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedTo TaskAssignment[]
+
+  @@index([enquiryId, status])
+  @@index([ownerId, createdAt])
+  @@index([dueDate, status])
+  @@map("tasks")
+}
+
+model TaskAssignment {
+  taskId     String   @map("task_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
+  @@map("task_assignments")
+}
+
+// ---------------------------------------------------------------------------
+// AI filter / report history
+// ---------------------------------------------------------------------------
+
+model AiReportSession {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  sessionId     String   @map("session_id")
+  title         String
+  lastMessageAt DateTime @map("last_message_at") @db.Timestamptz(6)
+  messageCount  Int      @default(0) @map("message_count")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AiReportSessionMessage[]
+
+  @@unique([userId, sessionId])
+  @@index([userId, lastMessageAt])
+  @@map("ai_report_sessions")
+}
+
+model AiReportSessionMessage {
+  id               String  @id @default(uuid()) @db.Uuid
+  sessionRowId     String  @map("session_row_id") @db.Uuid
+  userId           String  @map("user_id") @db.Uuid
+  queryText        String  @map("query_text")
+  queryTextDisplay String? @map("query_text_display")
+  /// The rewritten, context-resolved question actually sent to the planner.
+  queryTextInternal String?  @map("query_text_internal")
+  toolRequest       Json     @map("tool_request")
+  response          Json
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session AiReportSession @relation(fields: [sessionRowId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionRowId, createdAt])
+  @@index([userId, createdAt])
+  @@map("ai_report_session_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Company settings
+// ---------------------------------------------------------------------------
+
+/// Single-row table holding the business's own details, used for branding in
+/// the CRM. The invoice-related fields the previous client's version carried
+/// (bank account, invoice prefix and notes) are gone with the invoices module.
+model CompanySettings {
+  id          String   @id @default("company")
+  companyName String?  @map("company_name")
+  legalName   String?  @map("legal_name")
+  logoPublicId String? @map("logo_public_id")
+  logoUrl     String?  @map("logo_url")
+  address     String?
+  email       String?
+  phone       String?
+  website     String?
+  taxId       String?  @map("tax_id")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company_settings")
+}

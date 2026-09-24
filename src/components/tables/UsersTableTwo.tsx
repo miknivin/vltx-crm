@@ -18,13 +18,13 @@ const UsersTableTwo: React.FC = () => {
     search,
   });
 
-  const calculateRatio = (closedContacts: number, assignedContacts: number): string => {
+  const calculateRatio = (closedEnquiries: number, assignedEnquiries: number): string => {
     if (
-      typeof closedContacts === 'number' &&
-      typeof assignedContacts === 'number' &&
-      assignedContacts > 0
+      typeof closedEnquiries === 'number' &&
+      typeof assignedEnquiries === 'number' &&
+      assignedEnquiries > 0
     ) {
-      return (closedContacts / assignedContacts).toFixed(2);
+      return (closedEnquiries / assignedEnquiries).toFixed(2);
     }
     return '0.00';
   };
@@ -108,17 +108,17 @@ const UsersTableTwo: React.FC = () => {
                   </td>
                   <td className="px-5 py-4">
                     <span className="block">
-                      {user.assignedContacts || 0}
+                      {user.assignedEnquiries || 0}
                     </span>
                   </td>
                   <td className="px-5 py-4">
                     <span className="block">
-                      {user.closedContacts || 0}
+                      {user.closedEnquiries || 0}
                     </span>
                   </td>
                   <td className="px-5 py-4">
                     <span className="block">
-                      {calculateRatio(user.closedContacts, user.assignedContacts)}
+                      {calculateRatio(user.closedEnquiries, user.assignedEnquiries)}
                     </span>
                   </td>
                   {/* <td className="px-5 py-4">
