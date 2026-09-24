@@ -222,18 +222,24 @@ export async function createEnquiry(input: EnquiryInput, actorId: string | null)
       include: ENQUIRY_INCLUDE,
     });
 
+    // No CRM user is behind a website submission (actorId is null), so the
+    // timeline would otherwise fall back to a bare "Someone" for every
+    // activity these create. Recording the source lets the timeline credit
+    // it correctly instead of guessing from other enquiry fields.
+    const activitySource = input.sourceTitle ?? null;
+
     const activities: Prisma.EnquiryActivityCreateManyInput[] = [
       {
         enquiryId: enquiry.id,
         userId: actorId,
         action: "ENQUIRY_CREATED",
-        details: { name: customer.name, mobile: customer.mobile, category },
+        details: { name: customer.name, mobile: customer.mobile, category, source: activitySource },
       },
       {
         enquiryId: enquiry.id,
         userId: actorId,
         action: "PIPELINE_ADDED",
-        details: { pipelineName: pipeline.name, stageName: stage.name },
+        details: { pipelineName: pipeline.name, stageName: stage.name, source: activitySource },
       },
     ];
 
@@ -242,7 +248,7 @@ export async function createEnquiry(input: EnquiryInput, actorId: string | null)
         enquiryId: enquiry.id,
         userId: actorId,
         action: "ASSIGNED_TO_UPDATED",
-        details: { assignedUserIds: [input.assignToUserId] },
+        details: { assignedUserIds: [input.assignToUserId], source: activitySource },
       });
     }
 
@@ -251,7 +257,7 @@ export async function createEnquiry(input: EnquiryInput, actorId: string | null)
         enquiryId: enquiry.id,
         userId: actorId,
         action: "TAG_ADDED",
-        details: { tagName: name },
+        details: { tagName: name, source: activitySource },
       });
     }
 

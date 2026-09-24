@@ -84,38 +84,49 @@ const TimelineItem: React.FC<TimelineItemProps> = ({ activity }) => {
     return `${Math.floor(diffInHours / 24)} day${diffInHours >= 48 ? 's' : ''} ago`;
   };
 
+  // No CRM user sits behind a website submission — createEnquiry records the
+  // source (e.g. "Website Valuation Form") in `details.source` for exactly
+  // this, so the timeline can credit it correctly instead of falling back to
+  // a meaningless "Someone".
+  const getActorLabel = (activity: ResponseActivity): string => {
+    if (activity?.user?.name) return activity.user.name;
+    const source = activity.details?.source;
+    return typeof source === 'string' && source ? source : 'Someone';
+  };
+
   const getActionText = (activity: ResponseActivity) => {
+    const actor = getActorLabel(activity);
     switch (activity.action) {
       case 'ENQUIRY_CREATED':
-        return `${activity?.user?.name || 'Someone'} created this enquiry`;
+        return `${actor} created this enquiry`;
       case 'NOTE_ADDED':
-        return `${activity?.user?.name || 'Someone'} added a note`;
+        return `${actor} added a note`;
       case 'NOTE_UPDATED':
-        return `${activity?.user?.name || 'Someone'} updated a note`;
+        return `${actor} updated a note`;
       case 'PIPELINE_ADDED':
-        return `${activity?.user?.name || 'Someone'} added to pipeline`;
+        return `${actor} added to pipeline`;
       case 'PIPELINE_STAGE_UPDATED':
-        return `${activity?.user?.name || 'Someone'} updated pipeline stage to ${activity.details.stage || 'unknown'}`;
+        return `${actor} updated pipeline stage to ${activity.details.stage || 'unknown'}`;
       case 'PIPELINE_REMOVED':
-        return `${activity?.user?.name || 'Someone'} removed it from a pipeline`;
+        return `${actor} removed it from a pipeline`;
       case 'ASSIGNED_TO_UPDATED':
-        return `${activity?.user?.name || 'Someone'} updated assignment`;
+        return `${actor} updated assignment`;
       case 'REMARK_ADDED':
-        return `${activity?.user?.name || 'Someone'} added a remark`;
+        return `${actor} added a remark`;
       case 'PHOTO_ADDED':
-        return `${activity?.user?.name || 'Someone'} added a photo`;
+        return `${actor} added a photo`;
       case 'VALUATION_RECORDED':
-        return `${activity?.user?.name || 'Someone'} recorded a valuation`;
+        return `${actor} recorded a valuation`;
       case 'OFFER_MADE':
-        return `${activity?.user?.name || 'Someone'} made an offer`;
+        return `${actor} made an offer`;
       case 'TAG_ADDED':
-        return `${activity?.user?.name || 'Someone'} added tag`;
+        return `${actor} added tag`;
       case 'TAG_REMOVED':
-        return `${activity?.user?.name || 'Someone'} removed tag`;
+        return `${actor} removed tag`;
       case 'ENQUIRY_UPDATED':
-        return `${activity?.user?.name || 'Someone'} updated this enquiry`;
+        return `${actor} updated this enquiry`;
       default:
-        return `${activity?.user?.name || 'Someone'} performed ${activity.action}`;
+        return `${actor} performed ${activity.action}`;
     }
   };
 
