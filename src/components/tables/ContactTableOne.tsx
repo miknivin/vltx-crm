@@ -205,7 +205,7 @@ const ContactTableOne: React.FC = () => {
     data?.contacts?.every((contact) => selectedContacts.includes(contact._id));
 
   const isAdmin = user && user.role === "admin";
-  const columnCount = (isAdmin ? 1 : 0) + 1 + 1 + 1 + (isAdmin ? 1 : 0) + 1 + 1 + (isAdmin ? 1 : 0);
+  const columnCount = (isAdmin ? 1 : 0) + 1 + 1 + 1 + 1 + 1 + (isAdmin ? 1 : 0) + 1 + 1 + (isAdmin ? 1 : 0);
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
@@ -279,6 +279,12 @@ const ContactTableOne: React.FC = () => {
               </th>
               <th scope="col" className="px-3 py-2">
                 Phone number
+              </th>
+              <th scope="col" className="px-3 py-2">
+                Category
+              </th>
+              <th scope="col" className="px-3 py-2">
+                Est. value
               </th>
               <th scope="col" colSpan={1} className="px-3 py-2 ">
                 Tags
@@ -358,6 +364,19 @@ const ContactTableOne: React.FC = () => {
                     </div>
                   </th>
                   <td className="px-3 py-2">{contact.phone}</td>
+                  <td className="px-3 py-2">
+                    <div className="max-w-32 whitespace-normal">
+                      {contact.categoryLabel}
+                      {contact.brand ? (
+                        <span className="block text-xs text-gray-400">{contact.brand}</span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {contact.estimatedValue !== null && contact.estimatedValue !== undefined
+                      ? `₹${contact.estimatedValue.toLocaleString("en-IN")}`
+                      : "—"}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1 max-w-[130px] whitespace-break-spaces">
                       {contact.tags.length > 0 ? (

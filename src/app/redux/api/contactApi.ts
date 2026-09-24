@@ -155,9 +155,19 @@ interface UpdateContactRequest {
   email?: string;
   phone?: string;
   city?: string;
+  preferredContact?: string;
   notes?: string;
   tags?: { name: string }[]; // Send only name, backend sets user
+  jewelleryType?: string;
   brand?: string;
+  metalWeight?: number | string;
+  carat?: number | string;
+  shapeCut?: string;
+  condition?: string;
+  certificateAvailable?: string;
+  certificateLab?: string;
+  purchaseYear?: number | string;
+  description?: string;
   estimatedValue?: number | string;
   offeredAmount?: number | string;
   source?: string;

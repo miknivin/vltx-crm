@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   ResponseContact,
   TaskItem,
@@ -22,59 +22,47 @@ interface ReadOnlyContactDisplayProps {
   contact: ResponseContact;
 }
 
-interface ContactData {
-  name: string;
-  email: string;
-  phone: string;
-  notes?: string;
-  city?: string;
-  source?: string;
-  category?: string;
-  brand?: string;
-  estimatedValue?: string;
+/// One read-only labelled value box, matching the styling every field on
+/// this page already used — pulled out once here instead of repeating the
+/// same five class names for every one of the enquiry's ~20 fields.
+function Field({
+  label,
+  value,
+  id,
+}: {
+  label: string;
+  value: React.ReactNode;
+  id?: string;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
+      >
+        {label}
+      </label>
+      <div
+        id={id}
+        className="dark:bg-dark-900 min-h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+      >
+        {value ?? 'N/A'}
+      </div>
+    </div>
+  );
 }
 
+const formatCurrency = (value: number | null) =>
+  value === null ? null : `₹${value.toLocaleString('en-IN')}`;
+
 const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact }) => {
-  const [contactData, setContactData] = useState<ContactData>({
-    name: '',
-    email: '',
-    phone: '',
-    notes: '',
-    city: '',
-    source: '',
-    category: '',
-    brand: '',
-    estimatedValue: '',
-  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [updateTask, { isLoading: isTaskUpdating }] = useUpdateTaskMutation();
 
   const { data: tasksData, isLoading: isTasksLoading, error: tasksError } = useGetTasksQuery({ contactId: contact._id });
 
-  // Pre-populate contact data
-  useEffect(() => {
-    if (contact) {
-      setContactData({
-        name: contact.name,
-        email: contact.email || '',
-        phone: contact.phone,
-        notes: contact.notes || '',
-        city: contact.city || '',
-        source: contact.source || '',
-        category: contact.categoryLabel || '',
-        brand: contact.brand || '',
-        estimatedValue: contact.estimatedValue !== null && contact.estimatedValue !== undefined ? String(contact.estimatedValue) : '',
-      });
-    }
-  }, [contact]);
-
-  const openModal = () => {
-    setIsModalOpen(true);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-  };
+  const openModal = () => setIsModalOpen(true);
+  const closeModal = () => setIsModalOpen(false);
 
   const handleTaskStatusChange = async (task: TaskItem, status: TaskStatus) => {
     try {
@@ -89,109 +77,86 @@ const ReadOnlyContactDisplay: React.FC<ReadOnlyContactDisplayProps> = ({ contact
     <>
     <div className="space-y-6 sticky top-1 md:top-20">
       <div>
-        <label
-          htmlFor="name"
-          className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-        >
-          Name
-        </label>
-        <div
-          id="name"
-          className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-        >
-          {contactData.name}
+        <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">
+          Contact Details
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field id="name" label="Name" value={contact.name} />
+          <Field id="phone" label="Phone" value={contact.phone} />
+          <Field id="email" label="Email" value={contact.email} />
+          <Field id="city" label="City" value={contact.city} />
+          <Field
+            id="preferredContact"
+            label="Preferred Contact"
+            value={contact.preferredContactLabel}
+          />
+          <Field id="source" label="Source" value={contact.source} />
         </div>
       </div>
+
       <div>
-        <label
-          htmlFor="email"
-          className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-        >
-          Email
-        </label>
-        <div
-          id="email"
-          className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-        >
-          {contactData.email}
+        <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">
+          Asset Details
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Field id="category" label="Asset Category" value={contact.categoryLabel} />
+          <Field
+            id="jewelleryType"
+            label="Jewellery Type"
+            value={contact.jewelleryTypeLabel}
+          />
+          <Field id="brand" label="Brand / Maker" value={contact.brand} />
+          <Field id="condition" label="Condition" value={contact.conditionLabel} />
+          <Field id="shapeCut" label="Shape / Cut" value={contact.shapeCutLabel} />
+          <Field
+            id="metalWeight"
+            label="Metal Weight (g)"
+            value={contact.metalWeightG}
+          />
+          <Field id="carat" label="Weight / Carat" value={contact.caratWeight} />
+          <Field
+            id="certificateAvailable"
+            label="Certificate Available"
+            value={
+              contact.certificateAvailable === null
+                ? null
+                : contact.certificateAvailable
+                  ? 'Yes'
+                  : 'No'
+            }
+          />
+          <Field
+            id="certificateLab"
+            label="Certifying Lab"
+            value={contact.certificateLabLabel}
+          />
+          <Field id="purchaseYear" label="Purchase Year" value={contact.purchaseYear} />
+        </div>
+        <div className="mt-4">
+          <Field id="description" label="Description" value={contact.description} />
         </div>
       </div>
+
       <div>
-        <label
-          htmlFor="phone"
-          className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-        >
-          Phone
-        </label>
-        <div
-          id="phone"
-          className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-        >
-          {contactData.phone}
+        <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">
+          Valuation
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field
+            id="estimatedValue"
+            label="Estimated Value"
+            value={formatCurrency(contact.estimatedValue) ?? 'Not yet valued'}
+          />
+          <Field
+            id="offeredAmount"
+            label="Offered Amount"
+            value={formatCurrency(contact.offeredAmount) ?? 'No offer made'}
+          />
         </div>
       </div>
-      <div>
-        <label htmlFor="city" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
-          City
-        </label>
-        <div id="city" className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-          {contactData.city || 'N/A'}
-        </div>
-      </div>
-      <div>
-        <label
-          htmlFor="source"
-          className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-        >
-          Source
-        </label>
-        <div
-          id="source"
-          className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-        >
-          {contactData.source || 'N/A'}
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <label htmlFor="category" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
-            Asset Category
-          </label>
-          <div id="category" className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-            {contactData.category || 'N/A'}
-          </div>
-        </div>
-        <div>
-          <label htmlFor="brand" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
-            Brand / Maker
-          </label>
-          <div id="brand" className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-            {contactData.brand || 'N/A'}
-          </div>
-        </div>
-        <div>
-          <label htmlFor="estimatedValue" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
-            Estimated Value (₹)
-          </label>
-          <div id="estimatedValue" className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-            {contactData.estimatedValue || 'Not yet valued'}
-          </div>
-        </div>
-      </div>
-      <div>
-        <label
-          htmlFor="notes"
-          className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white"
-        >
-          Notes
-        </label>
-        <div
-          id="notes"
-          className="dark:bg-dark-900 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-        >
-          {contactData.notes || 'N/A'}
-        </div>
-      </div>
+
+      <Field id="notes" label="Internal Notes" value={contact.notes} />
+
       <div className="mt-6">
         <EnquiryPhotoGallery photos={contact.photos ?? []} />
       </div>

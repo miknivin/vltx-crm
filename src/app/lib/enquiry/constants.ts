@@ -147,3 +147,7 @@ export const JEWELLERY_TYPE_OPTIONS = (
 export const SHAPE_CUT_OPTIONS = (
   Object.entries(SHAPE_CUT_LABELS) as [ShapeCut, string][]
 ).map(([value, label]) => ({ value, label }));
+
+export const PREFERRED_CONTACT_OPTIONS = (
+  Object.entries(PREFERRED_CONTACT_LABELS) as [PreferredContact, string][]
+).map(([value, label]) => ({ value, label }));

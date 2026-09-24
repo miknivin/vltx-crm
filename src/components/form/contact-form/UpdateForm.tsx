@@ -21,6 +21,13 @@ import TaskCard from '@/components/pipeline/TaskCard';
 import SourceAutocomplete from './SourceAutocomplete';
 import EnquiryPhotoGallery from '@/components/contact/EnquiryPhotoGallery';
 import { useModal } from '@/hooks/useModal';
+import {
+  CONDITION_OPTIONS,
+  CERTIFICATE_LAB_OPTIONS,
+  JEWELLERY_TYPE_OPTIONS,
+  SHAPE_CUT_OPTIONS,
+  PREFERRED_CONTACT_OPTIONS,
+} from '@/app/lib/enquiry/constants';
 
 interface UpdateContactFormProps {
   contact: ResponseContact;
@@ -30,12 +37,64 @@ interface ContactFormData {
   name: string;
   email: string;
   phone: string;
-  notes?: string;
   city?: string;
+  preferredContact?: string;
+  notes?: string;
   source?: string;
+  jewelleryType?: string;
   brand?: string;
+  metalWeight?: string;
+  carat?: string;
+  shapeCut?: string;
+  condition?: string;
+  certificateAvailable?: string;
+  certificateLab?: string;
+  purchaseYear?: string;
+  description?: string;
   estimatedValue?: string;
   offeredAmount?: string;
+}
+
+const inputClass =
+  'dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800';
+const labelClass = 'mb-1.5 block text-sm font-medium text-gray-700 dark:text-white';
+
+function SelectField({
+  id,
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = 'Not set',
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      <select
+        id={id}
+        name={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={inputClass}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
@@ -47,10 +106,20 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
     name: '',
     email: '',
     phone: '',
-    notes: '',
     city: '',
+    preferredContact: '',
+    notes: '',
     source: '',
+    jewelleryType: '',
     brand: '',
+    metalWeight: '',
+    carat: '',
+    shapeCut: '',
+    condition: '',
+    certificateAvailable: '',
+    certificateLab: '',
+    purchaseYear: '',
+    description: '',
     estimatedValue: '',
     offeredAmount: '',
   });
@@ -65,16 +134,34 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
 
   useEffect(() => {
     if (contact) {
+      const str = (value: number | null | undefined) =>
+        value !== null && value !== undefined ? String(value) : '';
+
       setFormData({
         name: contact.name || '',
         email: contact.email || '',
         phone: contact.phone || '',
-        notes: contact.notes || '',
         city: contact.city || '',
+        preferredContact: contact.preferredContact || '',
+        notes: contact.notes || '',
         source: contact.source || '',
+        jewelleryType: contact.jewelleryType || '',
         brand: contact.brand || '',
-        estimatedValue: contact.estimatedValue !== null && contact.estimatedValue !== undefined ? String(contact.estimatedValue) : '',
-        offeredAmount: contact.offeredAmount !== null && contact.offeredAmount !== undefined ? String(contact.offeredAmount) : '',
+        metalWeight: str(contact.metalWeightG),
+        carat: str(contact.caratWeight),
+        shapeCut: contact.shapeCut || '',
+        condition: contact.condition || '',
+        certificateAvailable:
+          contact.certificateAvailable === null || contact.certificateAvailable === undefined
+            ? ''
+            : contact.certificateAvailable
+              ? 'Yes'
+              : 'No',
+        certificateLab: contact.certificateLab || '',
+        purchaseYear: str(contact.purchaseYear),
+        description: contact.description || '',
+        estimatedValue: str(contact.estimatedValue),
+        offeredAmount: str(contact.offeredAmount),
       });
       const pipelineEntry = Array.isArray(contact.pipelinesActive) && contact.pipelinesActive.length > 0
         ? contact.pipelinesActive.find(entry => entry.pipeline_id?.toString() === DEFAULT_PIPELINE_ID)
@@ -102,10 +189,20 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
-        notes: formData.notes,
         city: formData.city,
+        preferredContact: formData.preferredContact,
+        notes: formData.notes,
         source: formData.source,
+        jewelleryType: formData.jewelleryType,
         brand: formData.brand,
+        metalWeight: formData.metalWeight,
+        carat: formData.carat,
+        shapeCut: formData.shapeCut,
+        condition: formData.condition,
+        certificateAvailable: formData.certificateAvailable,
+        certificateLab: formData.certificateLab,
+        purchaseYear: formData.purchaseYear,
+        description: formData.description,
         estimatedValue: formData.estimatedValue,
         offeredAmount: formData.offeredAmount,
         tags: contact.tags || [], // Preserve existing tags
@@ -230,14 +327,32 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
             className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
           />
         </div>
+        <SelectField
+          id="preferredContact"
+          label="Preferred Contact"
+          value={formData.preferredContact || ''}
+          onChange={(value) => setFormData((prev) => ({ ...prev, preferredContact: value }))}
+          options={PREFERRED_CONTACT_OPTIONS}
+        />
         <SourceAutocomplete
           label="Source"
           value={formData.source || ''}
           onChange={(title) => setFormData((prev) => ({ ...prev, source: title }))}
         />
+
+        <h3 className="pt-2 text-sm font-semibold text-gray-900 dark:text-white">
+          Asset Details
+        </h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <SelectField
+            id="jewelleryType"
+            label="Jewellery Type"
+            value={formData.jewelleryType || ''}
+            onChange={(value) => setFormData((prev) => ({ ...prev, jewelleryType: value }))}
+            options={JEWELLERY_TYPE_OPTIONS}
+          />
           <div>
-            <label htmlFor="brand" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+            <label htmlFor="brand" className={labelClass}>
               Brand / Maker
             </label>
             <input
@@ -246,11 +361,106 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
               name="brand"
               value={formData.brand}
               onChange={handleInputChange}
-              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
+              className={inputClass}
+            />
+          </div>
+          <SelectField
+            id="condition"
+            label="Condition"
+            value={formData.condition || ''}
+            onChange={(value) => setFormData((prev) => ({ ...prev, condition: value }))}
+            options={CONDITION_OPTIONS}
+          />
+          <SelectField
+            id="shapeCut"
+            label="Shape / Cut"
+            value={formData.shapeCut || ''}
+            onChange={(value) => setFormData((prev) => ({ ...prev, shapeCut: value }))}
+            options={SHAPE_CUT_OPTIONS}
+          />
+          <div>
+            <label htmlFor="metalWeight" className={labelClass}>
+              Metal Weight (g)
+            </label>
+            <input
+              type="number"
+              id="metalWeight"
+              name="metalWeight"
+              min="0"
+              step="0.001"
+              value={formData.metalWeight}
+              onChange={handleInputChange}
+              className={inputClass}
             />
           </div>
           <div>
-            <label htmlFor="estimatedValue" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+            <label htmlFor="carat" className={labelClass}>
+              Weight / Carat
+            </label>
+            <input
+              type="number"
+              id="carat"
+              name="carat"
+              min="0"
+              step="0.01"
+              value={formData.carat}
+              onChange={handleInputChange}
+              className={inputClass}
+            />
+          </div>
+          <SelectField
+            id="certificateAvailable"
+            label="Certificate Available"
+            value={formData.certificateAvailable || ''}
+            onChange={(value) => setFormData((prev) => ({ ...prev, certificateAvailable: value }))}
+            options={[
+              { value: 'Yes', label: 'Yes' },
+              { value: 'No', label: 'No' },
+            ]}
+          />
+          <SelectField
+            id="certificateLab"
+            label="Certifying Lab"
+            value={formData.certificateLab || ''}
+            onChange={(value) => setFormData((prev) => ({ ...prev, certificateLab: value }))}
+            options={CERTIFICATE_LAB_OPTIONS}
+          />
+          <div>
+            <label htmlFor="purchaseYear" className={labelClass}>
+              Purchase Year
+            </label>
+            <input
+              type="number"
+              id="purchaseYear"
+              name="purchaseYear"
+              min="1900"
+              max="2100"
+              value={formData.purchaseYear}
+              onChange={handleInputChange}
+              className={inputClass}
+            />
+          </div>
+        </div>
+        <div>
+          <label htmlFor="description" className={labelClass}>
+            Description
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            value={formData.description}
+            onChange={handleInputChange}
+            className={inputClass}
+            rows={2}
+          />
+        </div>
+
+        <h3 className="pt-2 text-sm font-semibold text-gray-900 dark:text-white">
+          Valuation
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="estimatedValue" className={labelClass}>
               Estimated Value (₹)
             </label>
             <input
@@ -261,11 +471,11 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
               step="0.01"
               value={formData.estimatedValue}
               onChange={handleInputChange}
-              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
+              className={inputClass}
             />
           </div>
           <div>
-            <label htmlFor="offeredAmount" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-white">
+            <label htmlFor="offeredAmount" className={labelClass}>
               Offered Amount (₹)
             </label>
             <input
@@ -276,7 +486,7 @@ const UpdateContactForm: React.FC<UpdateContactFormProps> = ({ contact }) => {
               step="0.01"
               value={formData.offeredAmount}
               onChange={handleInputChange}
-              className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800"
+              className={inputClass}
             />
           </div>
         </div>
