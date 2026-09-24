@@ -5,7 +5,7 @@ import React from "react";
 import { getAppMetaTitle } from "@/app/lib/utils/metadata";
 
 export const metadata: Metadata = {
-  title: getAppMetaTitle("LSH-CRM | AI Report"),
+  title: getAppMetaTitle("AI Report | VLTX CRM"),
   description: "AI Report",
 };
 

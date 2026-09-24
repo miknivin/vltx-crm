@@ -3,8 +3,10 @@ import SettingsPageContent from '@/components/page-components/SettingsPageConten
 import { Metadata } from 'next';
 import React from 'react';
 
+import { getAppMetaTitle } from '@/app/lib/utils/metadata';
+
 export const metadata: Metadata = {
-  title: 'LSH-CRM',
+  title: getAppMetaTitle('Settings | VLTX CRM'),
   description: '',
 };
 

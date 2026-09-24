@@ -5,7 +5,7 @@ import TasksBoard from "@/components/page-components/TasksBoard";
 import TasksHeader from "@/components/page-components/TasksHeader";
 
 export const metadata: Metadata = {
-  title: getAppMetaTitle("Tasks"),
+  title: getAppMetaTitle("Tasks | VLTX CRM"),
   description: "",
 };
 

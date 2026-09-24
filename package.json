@@ -1,7 +1,8 @@
 {
-  "name": "free-nextjs-admin-dashboard",
+  "name": "vltx-crm",
   "version": "2.0.2",
   "private": true,
+  "description": "CRM for managing valuation enquiries submitted through the VLTX website.",
   "scripts": {
     "dev": "next dev",
     "build": "prisma migrate deploy && next build",

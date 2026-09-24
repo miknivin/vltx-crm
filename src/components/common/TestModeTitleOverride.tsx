@@ -10,7 +10,7 @@ export default function TestModeTitleOverride() {
 
   useEffect(() => {
     if (isTestMode) {
-      document.title = "LSH-CRM";
+      document.title = "VLTX CRM";
     }
   }, [pathname]);
 

@@ -7,12 +7,7 @@ import { notFound } from "next/navigation";
 import { getAppMetaTitle } from "@/app/lib/utils/metadata";
 
 export const metadata: Metadata = {
-  title:
-    process.env.NEXT_PUBLIC_TEST_MODE === "true"
-      ? getAppMetaTitle("LSH-CRM")
-      : process.env.NODE_ENV === 'development'
-        ? 'connect-e CRM'
-        : 'LSH-CRM',
+  title: getAppMetaTitle("Pipeline | VLTX CRM"),
   description: "View and manage your CRM pipelines",
 };
 

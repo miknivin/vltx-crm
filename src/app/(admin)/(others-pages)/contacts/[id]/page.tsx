@@ -5,7 +5,7 @@ import ContactByIdWrapper from "@/components/contact/ContactByIdWrapper";
 import { getAppMetaTitle } from "@/app/lib/utils/metadata";
 
 export const metadata: Metadata = {
-  title: getAppMetaTitle("LSH-CRM"),
+  title: getAppMetaTitle("Enquiry Details | VLTX CRM"),
   description: "",
 };
 

@@ -7,7 +7,7 @@ import MobilePipelineBody from "@/components/form/pipeline-mobile";
 import { getAppMetaTitle } from "@/app/lib/utils/metadata";
 
 export const metadata: Metadata = {
-  title: getAppMetaTitle("LSH-CRM"),
+  title: getAppMetaTitle("Pipeline | VLTX CRM"),
   description: "View and manage your CRM pipelines",
 };
 

@@ -6,7 +6,7 @@ import React from "react";
 import { getAppMetaTitle } from "@/app/lib/utils/metadata";
 
 export const metadata: Metadata = {
-  title: getAppMetaTitle("LSH-CRM"),
+  title: getAppMetaTitle("Profile | VLTX CRM"),
   description:
     "This is Next.js Profile page for TailAdmin - Next.js Tailwind CSS Admin Dashboard Template",
 };

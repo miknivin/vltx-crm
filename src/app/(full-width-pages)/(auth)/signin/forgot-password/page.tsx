@@ -5,7 +5,7 @@ import { getAppMetaTitle } from "@/app/lib/utils/metadata";
 
 // Define metadata for the page
 export const metadata: Metadata = {
-  title: getAppMetaTitle("LSH-CRM - Reset password"),
+  title: getAppMetaTitle("Reset Password | VLTX CRM"),
   description: "",
 };
 
