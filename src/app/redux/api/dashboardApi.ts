@@ -11,9 +11,10 @@ interface MonthlyConversionRate {
 interface DashboardResponse {
   success: boolean;
   totalContacts: number;
+  totalCustomers: number;
   totalClosedContacts: number;
-  currentMonthClosedContacts: number;
-  lastMonthClosedContacts: number;
+  enquiriesThisMonth: number;
+  customersThisMonth: number;
   monthlyConversionRates: MonthlyConversionRate[];
 }
 

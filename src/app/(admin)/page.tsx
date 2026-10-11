@@ -51,10 +51,10 @@ export default function Page() {
     <div className="grid grid-cols-12 gap-4 md:gap-6">
       <div className="col-span-12 space-y-6 xl:col-span-7">
         <ContactsMetrics
-          currentMonthClosedContacts={data.currentMonthClosedContacts}
-          lastMonthClosedContacts={data.lastMonthClosedContacts}
           totalContacts={data.totalContacts}
-          totalClosedContacts={data.totalClosedContacts}
+          totalCustomers={data.totalCustomers}
+          enquiriesThisMonth={data.enquiriesThisMonth}
+          customersThisMonth={data.customersThisMonth}
         />
         {/* <MonthlySalesChart monthlyConversionRates={data.monthlyConversionRates} /> */}
       </div>

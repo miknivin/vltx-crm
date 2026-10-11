@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { endOfMonth, startOfMonth, subMonths } from "date-fns";
+import { endOfMonth, startOfMonth } from "date-fns";
 import prisma from "@/app/lib/db/prisma";
 import { authorizeRoles, isAuthenticatedUser } from "../middlewares/auth";
 import { getSuccessStageIds } from "@/app/lib/utils/successStages";
@@ -16,10 +16,12 @@ interface MonthlyConversionRate {
 interface DashboardResponse {
   success: boolean;
   totalContacts: number;
+  totalCustomers: number;
   totalClosedContacts: number;
   monthlyConversionRates: MonthlyConversionRate[];
-  currentMonthClosedContacts: number;
-  lastMonthClosedContacts: number;
+  /// New rows created since the start of the current month.
+  enquiriesThisMonth: number;
+  customersThisMonth: number;
   /// Valuation-side totals: what the open book is estimated at, and what has
   /// actually been paid out for the enquiries that closed.
   openEstimatedValue: number;
@@ -57,6 +59,11 @@ export async function GET(req: NextRequest) {
     const scope: Prisma.EnquiryWhereInput = isAdmin
       ? {}
       : { assignedTo: { some: { userId: user.id } } };
+    // Same scoping the customers list applies: a non-admin only sees people
+    // behind an enquiry actually assigned to them.
+    const customerScope: Prisma.CustomerWhereInput = isAdmin
+      ? {}
+      : { enquiries: { some: { assignedTo: { some: { userId: user.id } } } } };
 
     const closed: Prisma.EnquiryWhereInput = closedStageIds.length
       ? { pipelineEntries: { some: { stageId: { in: closedStageIds } } } }
@@ -65,14 +72,8 @@ export async function GET(req: NextRequest) {
         { id: { in: [] } };
 
     const now = new Date();
-    const previousMonth = subMonths(now, 1);
-
-    const countClosedInRange = (rangeStart: Date, rangeEnd: Date) =>
-      prisma.enquiry.count({
-        where: {
-          AND: [scope, closed, { updatedAt: { gte: rangeStart, lte: rangeEnd } }],
-        },
-      });
+    const monthStart = startOfMonth(now);
+    const monthEnd = endOfMonth(now);
 
     // Prisma's `groupBy` cannot bucket by month, so the two monthly series
     // come from raw SQL. The scoping is applied with a parameterised join
@@ -94,16 +95,18 @@ export async function GET(req: NextRequest) {
 
     const [
       totalContacts,
+      totalCustomers,
       totalClosedContacts,
       createdByMonth,
       closedByMonth,
-      currentMonthClosedContacts,
-      lastMonthClosedContacts,
+      enquiriesThisMonth,
+      customersThisMonth,
       openValue,
       purchasedValue,
       awaitingValuation,
     ] = await Promise.all([
       prisma.enquiry.count({ where: scope }),
+      prisma.customer.count({ where: customerScope }),
       prisma.enquiry.count({ where: { AND: [scope, closed] } }),
       prisma.$queryRaw<MonthBucket[]>`
         SELECT EXTRACT(YEAR FROM e.created_at)::int AS year,
@@ -123,8 +126,12 @@ export async function GET(req: NextRequest) {
         GROUP BY 1, 2
         ORDER BY 1, 2
       `,
-      countClosedInRange(startOfMonth(now), endOfMonth(now)),
-      countClosedInRange(startOfMonth(previousMonth), endOfMonth(previousMonth)),
+      prisma.enquiry.count({
+        where: { AND: [scope, { createdAt: { gte: monthStart, lte: monthEnd } }] },
+      }),
+      prisma.customer.count({
+        where: { AND: [customerScope, { createdAt: { gte: monthStart, lte: monthEnd } }] },
+      }),
       prisma.enquiry.aggregate({
         where: { AND: [scope, { NOT: closed }] },
         _sum: { estimatedValue: true },
@@ -177,10 +184,11 @@ export async function GET(req: NextRequest) {
     const response: DashboardResponse = {
       success: true,
       totalContacts,
+      totalCustomers,
       totalClosedContacts,
       monthlyConversionRates,
-      currentMonthClosedContacts,
-      lastMonthClosedContacts,
+      enquiriesThisMonth,
+      customersThisMonth,
       openEstimatedValue: Number(openValue._sum.estimatedValue ?? 0),
       purchasedOfferedValue: Number(purchasedValue._sum.offeredAmount ?? 0),
       awaitingValuation,
