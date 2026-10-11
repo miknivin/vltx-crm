@@ -37,6 +37,7 @@ interface GetCustomersRequest {
   page?: number;
   limit?: number;
   keyword?: string;
+  city?: string;
 }
 
 interface GetCustomersResponse {
@@ -80,8 +81,8 @@ export const customerApi = createApi({
   tagTypes: ["Customers"],
   endpoints: (builder) => ({
     getCustomers: builder.query<GetCustomersResponse, GetCustomersRequest | void>({
-      query: ({ page = 1, limit = 10, keyword = "" } = {}) => ({
-        url: `/customers?page=${page}&limit=${limit}${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ""}`,
+      query: ({ page = 1, limit = 10, keyword = "", city = "" } = {}) => ({
+        url: `/customers?page=${page}&limit=${limit}${keyword ? `&keyword=${encodeURIComponent(keyword)}` : ""}${city ? `&city=${encodeURIComponent(city)}` : ""}`,
         method: "GET",
       }),
       providesTags: (result) =>

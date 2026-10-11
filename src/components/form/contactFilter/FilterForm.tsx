@@ -7,6 +7,7 @@ import { useGetPipelineByIdQuery } from "@/app/redux/api/pipelineApi";
 import KeywordSearch from "./elements/KeywordSearch";
 import StageFilter from "./elements/StageFilter";
 import SourceFilter from "./elements/SourceFilter";
+import CityFilter from "./elements/CityFilter";
 import UserAssignmentFilter from "./elements/UserAssignmentFilter";
 import FilterActions from "./elements/FilterActions";
 import DateRangePickerUi from "@/components/ui/date/DateRangePicker";
@@ -29,7 +30,8 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [source, setSource] = useState("");
-  
+  const [city, setCity] = useState("");
+
   const [assetFilters, setAssetFilters] = useState<AssetFilterState>(EMPTY_ASSET_FILTERS);
   const [assignedTo, setAssignedTo] = useState<{ userId: string; isNot: boolean }[]>([]);
   const [stage, setStage] = useState("");
@@ -59,6 +61,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
       createdAt?: { startDate: string; endDate: string };
       updatedAt?: { startDate: string; endDate: string };
       stage?: string;
+      city?: string;
     } & Partial<AssetFilterState> = {};
     try {
       if (filterStr) filter = JSON.parse(filterStr);
@@ -69,6 +72,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
     setKeyword(keyword);
     setSource(sourceParam);
     setStage(stageParam);
+    setCity(filter.city || "");
 
     // Rehydrate the asset filters from the URL so a shared or bookmarked
     // filtered view reopens the drawer showing what is actually applied.
@@ -103,6 +107,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
         updatedAt: { startDate: updatedAtStartDate, endDate: updatedAtEndDate },
       }),
       ...(stage && { stage }),
+      ...(city && { city }),
       ...toFilterPayload(assetFilters),
     };
 
@@ -124,6 +129,7 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
   const handleClear = () => {
     setKeyword("");
     setSource("");
+    setCity("");
     setAssetFilters(EMPTY_ASSET_FILTERS);
     setStage("");
     setAssignedTo([]);
@@ -218,6 +224,8 @@ export default function FilterForm({ isOpen, onClose }: ContactOffCanvasProps) {
           <StageFilter value={stage} onChange={setStage} stages={stages} disabled={isSubmitting} />
 
           <SourceFilter value={source} onChange={setSource} disabled={isSubmitting} />
+
+          <CityFilter value={city} onChange={setCity} disabled={isSubmitting} />
 
           <AssetFilters
             value={assetFilters}

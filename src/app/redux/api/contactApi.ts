@@ -97,6 +97,7 @@ interface ContactRequest {
   mobile: string;
   email?: string;
   city?: string;
+  preferredContact?: string;
   category: string;
   jewelleryType?: string;
   brand?: string;
@@ -108,9 +109,11 @@ interface ContactRequest {
   certificateLab?: string;
   purchaseYear?: number | string;
   description?: string;
+  photos?: { url: string; key?: string | null }[];
   notes?: string;
   tags?: string[];
   source?: string;
+  stageId?: string;
 }
 
 interface CreateContactApiResponse {

@@ -13,6 +13,8 @@ import { ENQUIRY_INCLUDE } from "./serialize";
 
 type Tx = Prisma.TransactionClient | PrismaClient;
 
+const TRANSACTION_OPTIONS = { timeout: 15000 };
+
 export class EnquiryInputError extends Error {
   constructor(message: string) {
     super(message);
@@ -128,6 +130,11 @@ export async function createEnquiry(input: EnquiryInput, actorId: string | null)
 
   const email = optionalText(input.email);
 
+  // The transaction below makes several sequential round-trips (pipeline/
+  // stage lookup, customer match, an optional source upsert, the enquiry
+  // insert, the activity log), which can outrun Prisma's 5s default
+  // interactive-transaction timeout against a remote Postgres on a colder
+  // connection — worth a longer budget rather than trimming the work.
   return prisma.$transaction(async (tx) => {
     const { pipeline, stage } = await resolveDefaultPlacement(tx, input);
 
@@ -264,5 +271,5 @@ export async function createEnquiry(input: EnquiryInput, actorId: string | null)
     await tx.enquiryActivity.createMany({ data: activities });
 
     return enquiry;
-  });
+  }, TRANSACTION_OPTIONS);
 }

@@ -28,6 +28,7 @@ export interface EnquiryFilterBody {
   source?: string;
   stage?: string;
   pipelineId?: string;
+  city?: string;
   createdAt?: DateRange;
   updatedAt?: DateRange;
 
@@ -173,6 +174,7 @@ export async function buildEnquiryWhere(
   if (filter.source) builder.eq("source", filter.source);
   if (filter.stage) builder.eq("pipelinesActive.stage_id", filter.stage);
   if (filter.pipelineId) builder.eq("pipelinesActive.pipeline_id", filter.pipelineId);
+  if (filter.city) builder.contains("customer.city", filter.city);
 
   applyDateRange(builder, "createdAt", filter.createdAt);
   applyDateRange(builder, "updatedAt", filter.updatedAt);

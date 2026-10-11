@@ -7,7 +7,7 @@ import { isAuthenticatedUser } from "@/app/api/middlewares/auth";
 import { s3Client, AWS_BUCKET_NAME, buildPublicUrl } from "@/app/lib/aws/s3Client";
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/svg+xml"]);
-const ALLOWED_FOLDERS = new Set(["avatars", "logos"]);
+const ALLOWED_FOLDERS = new Set(["avatars", "logos", "enquiries"]);
 const PRESIGN_EXPIRY_SECONDS = 60;
 
 interface PresignBody {

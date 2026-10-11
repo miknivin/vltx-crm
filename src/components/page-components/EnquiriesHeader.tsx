@@ -3,7 +3,7 @@
 import Button from "@/components/ui/button/Button";
 import { Modal } from "../ui/modal";
 import { useModal } from "@/hooks/useModal";
-import AddContactForm from "../form/contact-form/Add-Form";
+import AddEnquiryStepper from "../form/contact-form/add-enquiry/AddEnquiryStepper";
 import FilterIcons from "../ui/flowbiteIcons/Filter";
 import ContactOffCanvas from "../ui/drawer/ContactOffCanvas";
 import FileIcon from "../ui/flowbiteIcons/File";
@@ -68,7 +68,7 @@ export default function EnquiriesHeader() {
         <ContactImportStepper onClose={closeImportModal} />
       </Modal>
       <Modal isOpen={isAddModalOpen} onClose={closeAddModal} className="max-w-[700px] p-6 lg:p-10">
-        <AddContactForm onClose={closeAddModal} />
+        <AddEnquiryStepper onClose={closeAddModal} />
       </Modal>
       <ContactOffCanvas isOpen={isFilterOpen} onClose={closeFilter} />
     </>

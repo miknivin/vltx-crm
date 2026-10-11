@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useGetCustomersQuery, CustomerListItem } from "@/app/redux/api/customerApi";
+import Badge from "../ui/badge/Badge";
 import ShortSpinnerPrimary from "../ui/loaders/ShortSpinnerPrimary";
 import BasicPagination from "../ui/pagination/BasicPagination";
 import Select from "../form/Select";
@@ -12,21 +13,23 @@ import EditIcon from "../ui/flowbiteIcons/EditIcon";
 const CustomerTableOne: React.FC = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [params, setParams] = useState<{ page: number; limit: number; keyword: string }>({
+  const [params, setParams] = useState<{ page: number; limit: number; keyword: string; city: string }>({
     page: 1,
     limit: 10,
     keyword: "",
+    city: "",
   });
 
   useEffect(() => {
     const page = parseInt(searchParams.get("page") || "1", 10);
     const limit = parseInt(searchParams.get("limit") || "10", 10);
     const keyword = searchParams.get("keyword") || "";
+    const city = searchParams.get("city") || "";
 
     const validPage = isNaN(page) || page < 1 ? 1 : page;
     const validLimit = isNaN(limit) || !["10", "15", "25", "50"].includes(limit.toString()) ? 10 : limit;
 
-    setParams({ page: validPage, limit: validLimit, keyword });
+    setParams({ page: validPage, limit: validLimit, keyword, city });
   }, [searchParams]);
 
   useEffect(() => {
@@ -34,6 +37,7 @@ const CustomerTableOne: React.FC = () => {
     query.set("page", params.page.toString());
     query.set("limit", params.limit.toString());
     if (params.keyword) query.set("keyword", params.keyword);
+    if (params.city) query.set("city", params.city);
     router.push(`?${query.toString()}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
@@ -49,6 +53,10 @@ const CustomerTableOne: React.FC = () => {
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setParams((prev) => ({ ...prev, keyword: e.target.value, page: 1 }));
+  };
+
+  const handleCityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setParams((prev) => ({ ...prev, city: e.target.value, page: 1 }));
   };
 
   const handleLimitChange = (value: string) => {
@@ -80,14 +88,23 @@ const CustomerTableOne: React.FC = () => {
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
-      <div className="mb-2 px-5 py-3 flex gap-3 justify-between">
-        <input
-          type="text"
-          placeholder="Search contacts..."
-          value={params.keyword}
-          onChange={handleSearch}
-          className="w-full max-w-xl rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-        />
+      <div className="mb-2 px-5 py-3 flex gap-3 justify-between flex-wrap">
+        <div className="flex gap-3 flex-1 min-w-0">
+          <input
+            type="text"
+            placeholder="Search contacts..."
+            value={params.keyword}
+            onChange={handleSearch}
+            className="w-full max-w-xl rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+          />
+          <input
+            type="text"
+            placeholder="Filter by city..."
+            value={params.city}
+            onChange={handleCityChange}
+            className="w-full max-w-[200px] rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+          />
+        </div>
         <div className="relative flex gap-3">
           <Select
             options={options}
@@ -106,6 +123,7 @@ const CustomerTableOne: React.FC = () => {
         <table className="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">
           <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 z-10">
             <tr>
+              <th scope="col" className="px-3 py-2">ID</th>
               <th scope="col" className="px-3 py-2">Contact</th>
               <th scope="col" className="px-3 py-2">Phone number</th>
               <th scope="col" className="px-3 py-2">City</th>
@@ -118,7 +136,7 @@ const CustomerTableOne: React.FC = () => {
           <tbody>
             {(isLoading || isFetching) && (
               <tr className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                <td colSpan={7} className="px-5 py-4 text-center">
+                <td colSpan={8} className="px-5 py-4 text-center">
                   <div className="w-full flex justify-center">
                     <ShortSpinnerPrimary />
                   </div>
@@ -127,14 +145,14 @@ const CustomerTableOne: React.FC = () => {
             )}
             {error && (
               <tr className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                <td colSpan={7} className="px-5 py-4 text-center text-red-500">
+                <td colSpan={8} className="px-5 py-4 text-center text-red-500">
                   {getErrorMessage(error)}
                 </td>
               </tr>
             )}
             {!isLoading && !error && data?.customers.length === 0 && (
               <tr className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200">
-                <td colSpan={7} className="px-5 py-4 text-center">
+                <td colSpan={8} className="px-5 py-4 text-center">
                   No contacts found
                 </td>
               </tr>
@@ -146,6 +164,11 @@ const CustomerTableOne: React.FC = () => {
                   key={customer._id}
                   className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 border-gray-200"
                 >
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <Badge size="sm" color="light">
+                      <span className="font-mono">#{customer._id.slice(0, 8).toUpperCase()}</span>
+                    </Badge>
+                  </td>
                   <th scope="row" className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                     <div>
                       <span className="block font-medium text-gray-800 text-sm dark:text-white/90">

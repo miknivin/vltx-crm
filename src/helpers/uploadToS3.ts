@@ -1,4 +1,4 @@
-export type UploadFolder = "avatars" | "logos";
+export type UploadFolder = "avatars" | "logos" | "enquiries";
 
 export interface UploadedImage {
   url: string;

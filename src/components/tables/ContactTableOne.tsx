@@ -25,6 +25,7 @@ export interface FilterParams {
   pipelineNames?: string[];
   tags?: string[];
   source?: string;
+  city?: string;
   activities?: { value: string; isNot: boolean }[];
   createdAt?: {
     startDate?: string;
@@ -205,7 +206,7 @@ const ContactTableOne: React.FC = () => {
     data?.contacts?.every((contact) => selectedContacts.includes(contact._id));
 
   const isAdmin = user && user.role === "admin";
-  const columnCount = (isAdmin ? 1 : 0) + 1 + 1 + 1 + 1 + 1 + (isAdmin ? 1 : 0) + 1 + 1 + (isAdmin ? 1 : 0);
+  const columnCount = (isAdmin ? 1 : 0) + 1 + 1 + 1 + 1 + 1 + 1 + (isAdmin ? 1 : 0) + 1 + 1 + (isAdmin ? 1 : 0);
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
@@ -274,6 +275,9 @@ const ContactTableOne: React.FC = () => {
                   />
                 </th>
               )}
+              <th scope="col" className="px-3 py-2">
+                ID
+              </th>
               <th scope="col" className="px-3 py-2">
                 Contact
               </th>
@@ -348,6 +352,11 @@ const ContactTableOne: React.FC = () => {
                       />
                     </td>
                   )}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <Badge size="sm" color="light">
+                      <span className="font-mono">#{contact.reference}</span>
+                    </Badge>
+                  </td>
                   <th
                     scope="row"
                     className="px-3 py-2 font-medium text-gray-900 whitespace-nowrap dark:text-white"

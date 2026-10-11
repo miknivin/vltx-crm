@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.max(1, parseInt(searchParams.get("limit") || "10", 10));
     const keyword = searchParams.get("keyword")?.trim();
+    const city = searchParams.get("city")?.trim();
 
     const where: Prisma.CustomerWhereInput = {};
     // A non-admin only sees people behind an enquiry actually assigned to
@@ -25,6 +26,9 @@ export async function GET(req: NextRequest) {
         { mobile: { contains: keyword, mode: "insensitive" } },
         { email: { contains: keyword, mode: "insensitive" } },
       ];
+    }
+    if (city) {
+      where.city = { contains: city, mode: "insensitive" };
     }
 
     const [customers, total] = await Promise.all([
